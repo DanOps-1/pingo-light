@@ -330,7 +330,7 @@ for part in reversed(parts):
     except: pass
 " 2>/dev/null || echo 0)
 
-    if [[ "$tool_count" -eq 13 ]]; then pass "MCP server registers 13 tools"; else fail "MCP tools" "expected 13, got $tool_count"; fi
+    if [[ "$tool_count" -eq 15 ]]; then pass "MCP server registers 15 tools"; else fail "MCP tools" "expected 15, got $tool_count"; fi
 else
     skip "MCP server (mcp-server.py not found)"
 fi

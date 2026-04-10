@@ -1,22 +1,41 @@
 #!/usr/bin/env bash
-# pingo-light — Dead-simple fork maintenance for everyone.
-# https://github.com/user/pingo-light
+# pingo-light — AI-native fork maintenance tool.
+# https://github.com/DanOps-1/pingo-light
 #
-# Manages your customizations as a clean patch stack on top of upstream,
-# so syncing with upstream is always a one-command operation.
+# Manages customizations as a clean patch stack on top of upstream,
+# designed for AI agents and LLM tool-use via MCP, JSON output, and non-interactive mode.
 #
 # License: MIT
 
 set -euo pipefail
 
-VERSION="0.4.0"
+VERSION="0.5.0"
 CONFIG_FILE=".pingolight"
 PATCH_PREFIX="[pl]"
 MAX_PATCHES=100
+JSON_MODE=false
+YES_MODE=false
+
+# ─── Global Flags ─────────────────────────────────────────────────────────────
+# Parse global flags before command dispatch (--json, --yes/-y)
+_ARGS=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --json)  JSON_MODE=true ;;
+        --yes|-y) YES_MODE=true ;;
+        *)       _ARGS+=("$_arg") ;;
+    esac
+done
+set -- "${_ARGS[@]+"${_ARGS[@]}"}"
+
+# Auto-enable non-interactive mode when stdin is not a terminal (AI agent calling via pipe/MCP)
+if [[ ! -t 0 ]]; then
+    YES_MODE=true
+fi
 
 # ─── Colors & Output ──────────────────────────────────────────────────────────
 
-if [[ -t 1 ]] && [[ "${NO_COLOR:-}" == "" ]]; then
+if [[ -t 1 ]] && [[ "${NO_COLOR:-}" == "" ]] && [[ "$JSON_MODE" == false ]]; then
     RED='\033[0;31m'    GREEN='\033[0;32m'  YELLOW='\033[0;33m'
     BLUE='\033[0;34m'   MAGENTA='\033[0;35m' CYAN='\033[0;36m'
     BOLD='\033[1m'      DIM='\033[2m'       RESET='\033[0m'
@@ -24,13 +43,33 @@ else
     RED='' GREEN='' YELLOW='' BLUE='' MAGENTA='' CYAN='' BOLD='' DIM='' RESET=''
 fi
 
-info()    { echo -e "${BLUE}>${RESET} $*"; }
-success() { echo -e "${GREEN}OK${RESET} $*"; }
-warn()    { echo -e "${YELLOW}!${RESET} $*"; }
-error()   { echo -e "${RED}x${RESET} $*" >&2; }
-fatal()   { error "$@"; exit 1; }
-header()  { echo -e "\n${BOLD}$*${RESET}"; }
-dim()     { echo -e "${DIM}$*${RESET}"; }
+info()    { [[ "$JSON_MODE" == true ]] && return; echo -e "${BLUE}>${RESET} $*"; }
+success() { [[ "$JSON_MODE" == true ]] && return; echo -e "${GREEN}OK${RESET} $*"; }
+warn()    { [[ "$JSON_MODE" == true ]] && return; echo -e "${YELLOW}!${RESET} $*"; }
+error()   { [[ "$JSON_MODE" == true ]] && return; echo -e "${RED}x${RESET} $*" >&2; }
+fatal()   { if [[ "$JSON_MODE" == true ]]; then json_out '{"ok":false,"error":"'"$(echo "$*" | json_escape)"'"}'; else error "$@"; fi; exit 1; }
+header()  { [[ "$JSON_MODE" == true ]] && return; echo -e "\n${BOLD}$*${RESET}"; }
+dim()     { [[ "$JSON_MODE" == true ]] && return; echo -e "${DIM}$*${RESET}"; }
+
+# ─── JSON Helpers ─────────────────────────────────────────────────────────────
+
+json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' '; }
+json_out()    { echo "$1"; }
+
+# Prompt helper: auto-answers "y" in non-interactive/YES mode
+confirm() {
+    local prompt="${1:-Proceed?}" default="${2:-y}"
+    if [[ "$YES_MODE" == true ]]; then
+        return 0
+    fi
+    echo -n "  $prompt "
+    read -r answer
+    if [[ "$default" == "y" ]]; then
+        [[ ! "$answer" =~ ^[Nn] ]]
+    else
+        [[ "$answer" =~ ^[Yy] ]]
+    fi
+}
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,9 +143,7 @@ cmd_init() {
     # Check if already initialized
     if [[ -f "$CONFIG_FILE" ]]; then
         warn "pingo-light is already initialized in this repo."
-        echo -n "  Re-initialize? [y/N] "
-        read -r answer
-        [[ "$answer" =~ ^[Yy] ]] || return 0
+        confirm "Re-initialize? [y/N]" "n" || return 0
     fi
 
     header "Initializing pingo-light..."
@@ -181,9 +218,7 @@ cmd_init() {
 
         if [[ "$ahead" -gt 0 ]]; then
             info "Found ${BOLD}${ahead}${RESET} commits ahead of upstream on current branch."
-            echo -n "  Adopt these as your patch stack? [Y/n] "
-            read -r answer
-            if [[ ! "$answer" =~ ^[Nn] ]]; then
+            if confirm "Adopt these as your patch stack? [Y/n]" "y"; then
                 git branch "$PATCHES_BRANCH" HEAD
                 info "Adopted current commits as patches."
             else
@@ -315,12 +350,18 @@ patch_new() {
         info "Using staged changes only. Unstaged changes will remain in the working tree."
     fi
 
-    # Prompt for description
-    echo -n "  Brief description (optional, Enter to skip): "
-    read -r description
+    # Prompt for description (skip in non-interactive mode)
+    local description=""
+    if [[ "$YES_MODE" == true ]]; then
+        description="${PINGO_DESCRIPTION:-no description}"
+    else
+        echo -n "  Brief description (optional, Enter to skip): "
+        read -r description
+        description="${description:-no description}"
+    fi
 
     # Build commit message
-    local commit_msg="$PATCH_PREFIX $name: ${description:-no description}"
+    local commit_msg="$PATCH_PREFIX $name: $description"
 
     # Commit
     git commit -m "$commit_msg"
@@ -447,9 +488,7 @@ patch_drop() {
     subject=$(git log -1 --format="%s" "$hash")
 
     echo -e "  About to drop: ${BOLD}${subject}${RESET}"
-    echo -n "  Are you sure? [y/N] "
-    read -r answer
-    [[ "$answer" =~ ^[Yy] ]] || { info "Cancelled."; return 0; }
+    confirm "Are you sure? [y/N]" "n" || { info "Cancelled."; return 0; }
 
     # Ensure we're on the patches branch
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH"
@@ -760,9 +799,7 @@ cmd_sync() {
     if [[ "$force" != true ]]; then
         echo ""
         echo -e "  This will rebase your ${BOLD}${patch_count}${RESET} patch(es) onto ${BOLD}${behind}${RESET} new upstream commit(s)."
-        echo -n "  Proceed? [Y/n] "
-        read -r answer
-        [[ "$answer" =~ ^[Nn] ]] && { info "Cancelled."; return 0; }
+        confirm "Proceed? [Y/n]" "y" || { info "Cancelled."; return 0; }
     fi
 
     echo ""
@@ -818,6 +855,13 @@ cmd_sync() {
 # ─── Command: status ──────────────────────────────────────────────────────────
 
 cmd_status() {
+    # In JSON mode, delegate to structured output
+    if [[ "$JSON_MODE" == true ]]; then
+        load_config
+        cmd_json_status
+        return
+    fi
+
     load_config
 
     header "pingo-light status"
@@ -1026,12 +1070,15 @@ cmd_autosync() {
     echo ""
 
     # Ask for schedule
-    echo -e "  How often should auto-sync run?"
-    echo -e "  ${CYAN}1${RESET}) Daily (recommended)"
-    echo -e "  ${CYAN}2${RESET}) Every 6 hours"
-    echo -e "  ${CYAN}3${RESET}) Weekly"
-    echo -n "  Choose [1-3, default 1]: "
-    read -r choice
+    local choice="${PINGO_SCHEDULE:-}"
+    if [[ -z "$choice" && "$YES_MODE" != true ]]; then
+        echo -e "  How often should auto-sync run?"
+        echo -e "  ${CYAN}1${RESET}) Daily (recommended)"
+        echo -e "  ${CYAN}2${RESET}) Every 6 hours"
+        echo -e "  ${CYAN}3${RESET}) Weekly"
+        echo -n "  Choose [1-3, default 1]: "
+        read -r choice
+    fi
 
     local cron_schedule
     local schedule_desc
@@ -1178,9 +1225,7 @@ cmd_undo() {
     echo -e "  Current HEAD: ${DIM}$(git log -1 --format="%h %s" "$current_head")${RESET}"
     echo -e "  Revert to:    ${BOLD}$(git log -1 --format="%h %s" "$prev_head")${RESET} ${DIM}($prev_subject)${RESET}"
     echo ""
-    echo -n "  Proceed? [y/N] "
-    read -r answer
-    [[ "$answer" =~ ^[Yy] ]] || { info "Cancelled."; return 0; }
+    confirm "Proceed? [y/N]" "n" || { info "Cancelled."; return 0; }
 
     git branch -f "$PATCHES_BRANCH" "$prev_head"
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] && git reset --hard "$prev_head"
@@ -1207,12 +1252,172 @@ cmd_diff() {
     git diff "$base..$PATCHES_BRANCH"
 }
 
+# ─── Command: conflict-analyze ────────────────────────────────────────────────
+# AI-native: outputs structured conflict info for LLM agents to resolve
+
+cmd_conflict_analyze() {
+    ensure_git_repo
+
+    # Check if we're in a rebase
+    if [[ ! -d .git/rebase-merge && ! -d .git/rebase-apply ]]; then
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"in_rebase":false,"conflicts":[]}'
+        else
+            info "No rebase in progress. No conflicts to analyze."
+        fi
+        return 0
+    fi
+
+    local conflicted_files
+    conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+
+    if [[ -z "$conflicted_files" ]]; then
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"in_rebase":true,"conflicts":[]}'
+        else
+            info "Rebase in progress but no unresolved conflicts."
+        fi
+        return 0
+    fi
+
+    # Get current patch info
+    local current_patch=""
+    if [[ -f .git/rebase-merge/message ]]; then
+        current_patch=$(head -1 .git/rebase-merge/message)
+    fi
+
+    if [[ "$JSON_MODE" == true ]]; then
+        # Build JSON output
+        local json='{"ok":true,"in_rebase":true,"current_patch":"'"$(echo "$current_patch" | json_escape)"'",'
+        json+='"conflicts":['
+
+        local first=true
+        while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ "$first" == true ]] && first=false || json+=','
+
+            # Extract conflict sections
+            local ours theirs
+            ours=$(sed -n '/^<<<<<<</,/^=======/{ /^<<<<<<</d; /^=======/d; p; }' "$file" | json_escape)
+            theirs=$(sed -n '/^=======/,/^>>>>>>>/{ /^=======/d; /^>>>>>>>/d; p; }' "$file" | json_escape)
+            local conflict_count
+            conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
+
+            json+='{"file":"'"$file"'","conflict_count":'"$conflict_count"','
+            json+='"ours":"'"$ours"'","theirs":"'"$theirs"'"}'
+        done <<< "$conflicted_files"
+
+        json+='],'
+        json+='"resolution_hints":["Edit conflicted files to remove <<<<<<< ======= >>>>>>> markers",'
+        json+='"Run: git add <files> && git rebase --continue",'
+        json+='"To abort: git rebase --abort"]}'
+
+        json_out "$json"
+    else
+        header "Conflict Analysis"
+        echo ""
+        if [[ -n "$current_patch" ]]; then
+            echo -e "  ${BOLD}Patch:${RESET} $current_patch"
+            echo ""
+        fi
+
+        while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            local conflict_count
+            conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
+            echo -e "  ${RED}$file${RESET} ($conflict_count conflict region(s))"
+            echo ""
+
+            # Show each conflict region
+            awk '/^<<<<<<< /{found=1} found{print "    " $0} /^>>>>>>>/{found=0; print ""}' "$file"
+        done <<< "$conflicted_files"
+
+        echo -e "  ${BOLD}To resolve:${RESET}"
+        echo "    1. Edit the files above, remove <<<<<<< ======= >>>>>>> markers"
+        echo "    2. git add <files>"
+        echo "    3. git rebase --continue"
+    fi
+}
+
+# ─── Command: json-status (structured status for AI) ─────────────────────────
+
+cmd_json_status() {
+    load_config
+
+    git fetch upstream 2>/dev/null || true
+
+    local tracking_head upstream_head behind=0 patch_count=0
+    tracking_head=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null || echo "")
+    upstream_head=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo "")
+
+    if [[ -n "$tracking_head" && -n "$upstream_head" && "$tracking_head" != "$upstream_head" ]]; then
+        behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo 0)
+    fi
+
+    local base=""
+    if base=$(patches_base 2>/dev/null); then
+        patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
+    fi
+
+    # Build patches array
+    local patches_json="["
+    if [[ "$patch_count" -gt 0 ]]; then
+        local first=true
+        local commits
+        commits=$(git rev-list --reverse "$base..$PATCHES_BRANCH" 2>/dev/null)
+        while IFS= read -r hash; do
+            [[ -z "$hash" ]] && continue
+            [[ "$first" == true ]] && first=false || patches_json+=","
+            local subject short_hash files_count
+            short_hash=$(git rev-parse --short "$hash")
+            subject=$(git log -1 --format="%s" "$hash" | json_escape)
+            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
+
+            local pname=""
+            local raw_subject
+            raw_subject=$(git log -1 --format="%s" "$hash")
+            if [[ "$raw_subject" =~ ^\[pl\]\ ([^:]+): ]]; then
+                pname="${BASH_REMATCH[1]}"
+            fi
+
+            patches_json+='{"name":"'"$pname"'","hash":"'"$short_hash"'","subject":"'"$subject"'","files":'"$files_count"'}'
+        done <<< "$commits"
+    fi
+    patches_json+="]"
+
+    # Overlap detection
+    local overlap_json="[]"
+    if [[ "$behind" -gt 0 && "$patch_count" -gt 0 && -n "$base" ]]; then
+        local patch_files upstream_files overlap
+        patch_files=$(git diff --name-only "$base..$PATCHES_BRANCH" 2>/dev/null | sort)
+        upstream_files=$(git diff --name-only "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null | sort)
+        if [[ -n "$patch_files" && -n "$upstream_files" ]]; then
+            overlap=$(comm -12 <(echo "$patch_files") <(echo "$upstream_files"))
+            if [[ -n "$overlap" ]]; then
+                overlap_json='['
+                local first=true
+                while IFS= read -r f; do
+                    [[ -z "$f" ]] && continue
+                    [[ "$first" == true ]] && first=false || overlap_json+=','
+                    overlap_json+='"'"$f"'"'
+                done <<< "$overlap"
+                overlap_json+=']'
+            fi
+        fi
+    fi
+
+    local in_rebase=false
+    [[ -d .git/rebase-merge || -d .git/rebase-apply ]] && in_rebase=true
+
+    json_out '{"ok":true,"upstream_url":"'"$(echo "$UPSTREAM_URL" | json_escape)"'","upstream_branch":"'"$UPSTREAM_BRANCH"'","current_branch":"'"$(current_branch)"'","behind":'"$behind"',"patch_count":'"$patch_count"',"patches":'"$patches_json"',"conflict_risk":'"$overlap_json"',"in_rebase":'"$in_rebase"',"up_to_date":'"$([ "$behind" -eq 0 ] && echo true || echo false)"'}'
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 show_help() {
     cat << 'EOF'
 
-  pingo-light — Dead-simple fork maintenance for everyone.
+  pingo-light — AI-native fork maintenance tool.
 
   Manages your customizations as a clean patch stack on top of upstream,
   so syncing with upstream is always a one-command operation.
@@ -1270,15 +1475,16 @@ main() {
     shift 2>/dev/null || true
 
     case "$cmd" in
-        init)       cmd_init "$@" ;;
-        patch|p)    cmd_patch "$@" ;;
-        sync|s)     cmd_sync "$@" ;;
-        status|st)  cmd_status "$@" ;;
-        doctor)     cmd_doctor "$@" ;;
-        auto-sync)  cmd_autosync "$@" ;;
-        log)        cmd_log "$@" ;;
-        undo)       cmd_undo "$@" ;;
-        diff|d)     cmd_diff "$@" ;;
+        init)               cmd_init "$@" ;;
+        patch|p)            cmd_patch "$@" ;;
+        sync|s)             cmd_sync "$@" ;;
+        status|st)          cmd_status "$@" ;;
+        doctor)             cmd_doctor "$@" ;;
+        auto-sync)          cmd_autosync "$@" ;;
+        log)                cmd_log "$@" ;;
+        undo)               cmd_undo "$@" ;;
+        diff|d)             cmd_diff "$@" ;;
+        conflict-analyze)   cmd_conflict_analyze "$@" ;;
         version|-v|--version) echo "pingo-light $VERSION" ;;
         help|-h|--help|"")    show_help ;;
         *)          fatal "Unknown command: $cmd. Run 'pingo-light --help' for usage." ;;

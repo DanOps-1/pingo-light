@@ -275,6 +275,49 @@ TOOLS = [
             "required": ["cwd"]
         }
     },
+    {
+        "name": "pingo_conflict_analyze",
+        "description": (
+            "Analyze current rebase conflicts. Returns structured info about each conflicted file: "
+            "the 'ours' version (upstream), 'theirs' version (your patch), conflict count, and resolution hints. "
+            "Call this when pingo_sync reports a conflict to understand what needs fixing."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {
+                    "type": "string",
+                    "description": "Path to the git repository"
+                }
+            },
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "pingo_conflict_resolve",
+        "description": (
+            "Resolve a conflict during rebase by writing the resolved content to a file, "
+            "staging it, and continuing the rebase. Use after pingo_conflict_analyze."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {
+                    "type": "string",
+                    "description": "Path to the git repository"
+                },
+                "file": {
+                    "type": "string",
+                    "description": "Path to the conflicted file (relative to repo root)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The fully resolved file content (no conflict markers)"
+                }
+            },
+            "required": ["cwd", "file", "content"]
+        }
+    },
 ]
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
@@ -318,7 +361,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     cwd = arguments.get("cwd", ".")
 
     if name == "pingo_status":
-        return run_pingo(["status"], cwd)
+        return run_pingo(["status", "--json"], cwd)
 
     elif name == "pingo_init":
         args = ["init", arguments["upstream_url"]]
@@ -370,6 +413,35 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         schedule_map = {"daily": "1", "6h": "2", "weekly": "3"}
         choice = schedule_map.get(arguments.get("schedule", "daily"), "1")
         return run_pingo(["auto-sync"], cwd, input_text=f"{choice}\n")
+
+    elif name == "pingo_conflict_analyze":
+        return run_pingo(["conflict-analyze", "--json"], cwd)
+
+    elif name == "pingo_conflict_resolve":
+        file_path = os.path.join(cwd, arguments["file"])
+        content = arguments["content"]
+        try:
+            with open(file_path, "w") as f:
+                f.write(content)
+            result = subprocess.run(
+                ["git", "add", arguments["file"]],
+                cwd=cwd, capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0:
+                return {"content": [{"type": "text", "text": f"git add failed: {result.stderr}"}], "isError": True}
+            # Try to continue rebase
+            result = subprocess.run(
+                ["git", "rebase", "--continue"],
+                cwd=cwd, capture_output=True, text=True, timeout=60,
+                env={**os.environ, "GIT_EDITOR": "true"},
+            )
+            output = result.stdout + "\n" + result.stderr
+            return {
+                "content": [{"type": "text", "text": output.strip()}],
+                "isError": result.returncode != 0,
+            }
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True}
 
     else:
         return {
