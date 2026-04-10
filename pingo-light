@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-VERSION="0.6.0"
+VERSION="0.7.0"
 CONFIG_FILE=".pingolight"
 PATCH_PREFIX="[pl]"
 MAX_PATCHES=100
@@ -275,7 +275,16 @@ cmd_patch() {
         export)          patch_export "$@" ;;
         import)          patch_import "$@" ;;
         show)            patch_show "$@" ;;
-        reorder)         patch_reorder "$@" ;;
+        reorder)
+            # Check for --order flag (non-interactive mode)
+            if [[ "${1:-}" == "--order" && -n "${2:-}" ]]; then
+                patch_reorder_noninteractive "$2"
+            else
+                patch_reorder "$@"
+            fi
+            ;;
+        squash)          patch_squash "$@" ;;
+        meta)            cmd_patch_meta "$@" ;;
         *)
             echo -e "${BOLD}Usage:${RESET} pingo-light patch <command>"
             echo ""
@@ -891,6 +900,9 @@ cmd_sync() {
     echo ""
 
     if git rebase --onto "$TRACKING_BRANCH" "$saved_tracking" "$PATCHES_BRANCH" 2>&1; then
+        # Record sync history
+        record_sync_history "$(pwd)" "$behind" "$(git rev-parse --short "$saved_tracking" 2>/dev/null)"
+
         if [[ "$JSON_MODE" == true ]]; then
             json_out '{"ok":true,"synced":true,"behind_before":'"$behind"',"patches_rebased":'"$patch_count"'}'
         else
@@ -1523,6 +1535,350 @@ cmd_json_status() {
     json_out '{"ok":true,"upstream_url":"'"$(echo "$UPSTREAM_URL" | json_escape)"'","upstream_branch":"'"$UPSTREAM_BRANCH"'","current_branch":"'"$(current_branch)"'","behind":'"$behind"',"patch_count":'"$patch_count"',"patches":'"$patches_json"',"conflict_risk":'"$overlap_json"',"in_rebase":'"$in_rebase"',"up_to_date":'"$([ "$behind" -eq 0 ] && echo true || echo false)"'}'
 }
 
+# ─── Command: config ───────────────────────────────────────────────────────────
+
+cmd_config() {
+    local subcmd="${1:-}"
+    shift 2>/dev/null || true
+
+    ensure_git_repo
+    [[ -f "$CONFIG_FILE" ]] || fatal "Not initialized."
+
+    case "$subcmd" in
+        get)
+            local key="${1:-}"
+            [[ -z "$key" ]] && fatal "Usage: pingo-light config get <key>"
+            local val
+            val=$(git config --file "$CONFIG_FILE" "pingolight.$key" 2>/dev/null || git config --file "$CONFIG_FILE" "$key" 2>/dev/null || echo "")
+            if [[ "$JSON_MODE" == true ]]; then
+                json_out '{"ok":true,"key":"'"$key"'","value":"'"$(echo "$val" | json_escape)"'"}'
+            else
+                echo "$val"
+            fi
+            ;;
+        set)
+            local key="${1:-}" val="${2:-}"
+            [[ -z "$key" || -z "$val" ]] && fatal "Usage: pingo-light config set <key> <value>"
+            git config --file "$CONFIG_FILE" "pingolight.$key" "$val"
+            if [[ "$JSON_MODE" == true ]]; then
+                json_out '{"ok":true,"key":"'"$key"'","value":"'"$(echo "$val" | json_escape)"'"}'
+            else
+                success "Set $key = $val"
+            fi
+            ;;
+        list)
+            if [[ "$JSON_MODE" == true ]]; then
+                local items="{"
+                local first=true
+                while IFS='=' read -r k v; do
+                    [[ -z "$k" ]] && continue
+                    [[ "$first" == true ]] && first=false || items+=","
+                    items+='"'"$(echo "$k" | json_escape)"'":"'"$(echo "$v" | json_escape)"'"'
+                done < <(git config --file "$CONFIG_FILE" --list 2>/dev/null)
+                items+="}"
+                json_out '{"ok":true,"config":'"$items"'}'
+            else
+                git config --file "$CONFIG_FILE" --list 2>/dev/null
+            fi
+            ;;
+        *)
+            echo -e "${BOLD}Usage:${RESET} pingo-light config <get|set|list>"
+            echo ""
+            echo "  get <key>          Get a config value"
+            echo "  set <key> <value>  Set a config value"
+            echo "  list               List all config"
+            echo ""
+            echo -e "${DIM}Examples:${RESET}"
+            echo "  pingo-light config set sync.dry-run-first true"
+            echo "  pingo-light config get sync.dry-run-first"
+            return 1
+            ;;
+    esac
+}
+
+# ─── Command: patch meta ──────────────────────────────────────────────────────
+
+METADATA_DIR=".pingo"
+METADATA_FILE=".pingo/metadata.json"
+
+ensure_metadata() {
+    mkdir -p "$METADATA_DIR"
+    [[ -f "$METADATA_FILE" ]] || echo '{"patches":{}}' > "$METADATA_FILE"
+}
+
+cmd_patch_meta() {
+    load_config
+    local target="${1:-}"
+    shift 2>/dev/null || true
+
+    if [[ -z "$target" ]]; then
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch meta <name> [--set-reason|--set-tag|--set-expires|--set-upstream-pr] <value>"
+        return 1
+    fi
+
+    ensure_metadata
+
+    local action="" value=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --set-reason)       action="reason"; value="$2"; shift 2 ;;
+            --set-tag)          action="tag"; value="$2"; shift 2 ;;
+            --set-expires)      action="expires"; value="$2"; shift 2 ;;
+            --set-upstream-pr)  action="upstream_pr"; value="$2"; shift 2 ;;
+            --set-status)       action="status"; value="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    if [[ -z "$action" ]]; then
+        # Show metadata for this patch
+        local meta
+        meta=$(python3 -c "
+import json, sys
+with open('$METADATA_FILE') as f: data = json.load(f)
+p = data.get('patches', {}).get('$target', {})
+if not p: p = {'reason':'','tags':[],'expires':None,'upstream_pr':'','status':'permanent'}
+json.dump(p, sys.stdout)
+" 2>/dev/null || echo '{}')
+
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"patch":"'"$target"'","meta":'"$meta"'}'
+        else
+            echo -e "  ${BOLD}$target${RESET}"
+            echo "$meta" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for k, v in d.items():
+    print(f'  {k}: {v}')
+" 2>/dev/null
+        fi
+    else
+        # Set metadata
+        python3 -c "
+import json
+with open('$METADATA_FILE') as f: data = json.load(f)
+patches = data.setdefault('patches', {})
+p = patches.setdefault('$target', {'reason':'','tags':[],'expires':None,'upstream_pr':'','status':'permanent','created':'$(date -u +%Y-%m-%dT%H:%M:%SZ)'})
+action, value = '$action', '$value'
+if action == 'tag':
+    if value not in p.get('tags', []):
+        p.setdefault('tags', []).append(value)
+elif action == 'reason':
+    p['reason'] = value
+elif action == 'expires':
+    p['expires'] = value
+elif action == 'upstream_pr':
+    p['upstream_pr'] = value
+elif action == 'status':
+    p['status'] = value
+with open('$METADATA_FILE', 'w') as f: json.dump(data, f, indent=2)
+" 2>/dev/null
+
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"patch":"'"$target"'","set":"'"$action"'","value":"'"$(echo "$value" | json_escape)"'"}'
+        else
+            success "Set $action = $value for patch '$target'"
+        fi
+    fi
+}
+
+# ─── Command: patch squash ────────────────────────────────────────────────────
+
+patch_squash() {
+    load_config
+    ensure_clean_tree
+    local idx1="${1:-}" idx2="${2:-}"
+
+    if [[ -z "$idx1" || -z "$idx2" ]]; then
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch squash <index1> <index2>"
+        echo "  Squash two adjacent patches into one."
+        return 1
+    fi
+
+    local base
+    base=$(patches_base) || { fatal "No patches."; }
+
+    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
+
+    # Use GIT_SEQUENCE_EDITOR to programmatically squash
+    local script
+    script=$(mktemp)
+    cat > "$script" << 'SEDEOF'
+#!/bin/bash
+# Change the second pick to squash
+sed -i "${IDX2}s/^pick/squash/" "$1"
+SEDEOF
+    chmod +x "$script"
+    sed -i "s/\${IDX2}/$idx2/" "$script"
+
+    if GIT_SEQUENCE_EDITOR="$script" git rebase -i "$base" &>/dev/null; then
+        rm -f "$script"
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"squashed":['"$idx1"','"$idx2"']}'
+        else
+            success "Patches $idx1 and $idx2 squashed."
+        fi
+    else
+        rm -f "$script"
+        git rebase --abort &>/dev/null || true
+        fatal "Failed to squash patches."
+    fi
+}
+
+# ─── Command: patch reorder --order ───────────────────────────────────────────
+
+patch_reorder_noninteractive() {
+    local order_str="$1"
+    load_config
+    ensure_clean_tree
+
+    local base
+    base=$(patches_base) || { fatal "No patches."; }
+
+    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
+
+    # Parse order: "3,1,2" → reorder pick lines
+    local script
+    script=$(mktemp)
+    cat > "$script" << 'PYEOF'
+#!/usr/bin/env python3
+import sys
+with open(sys.argv[1]) as f: lines = f.readlines()
+picks = [l for l in lines if l.startswith('pick ')]
+others = [l for l in lines if not l.startswith('pick ')]
+order = [int(x.strip()) - 1 for x in sys.argv[2].split(',')]
+reordered = [picks[i] for i in order if i < len(picks)]
+with open(sys.argv[1], 'w') as f:
+    f.writelines(reordered + others)
+PYEOF
+    chmod +x "$script"
+
+    if GIT_SEQUENCE_EDITOR="python3 $script ORDER_PLACEHOLDER" git rebase -i "$base" &>/dev/null; then
+        true  # rebase expects the editor to modify the file directly, workaround below
+    fi
+    rm -f "$script"
+
+    # Simpler approach: use git rebase with specific commit ordering
+    # Actually, let's use a sed-based approach
+    local script2
+    script2=$(mktemp)
+    # Generate a sed script that reorders the pick lines
+    python3 -c "
+order = [int(x.strip()) for x in '$order_str'.split(',')]
+print('#!/bin/bash')
+print('lines=\$(cat \"\$1\")')
+# Extract pick lines in order
+for i, idx in enumerate(order):
+    print(f'line{i}=\$(echo \"\$lines\" | sed -n \"{idx}p\")')
+# Write them back
+for i in range(len(order)):
+    if i == 0:
+        print(f'echo \"\$line{i}\" > \"\$1\"')
+    else:
+        print(f'echo \"\$line{i}\" >> \"\$1\"')
+" > "$script2"
+    chmod +x "$script2"
+
+    if GIT_SEQUENCE_EDITOR="bash $script2" git rebase -i "$base" &>/dev/null; then
+        rm -f "$script2"
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"reordered":"'"$order_str"'"}'
+        else
+            success "Patches reordered: $order_str"
+        fi
+    else
+        rm -f "$script2"
+        git rebase --abort &>/dev/null || true
+        fatal "Failed to reorder patches."
+    fi
+}
+
+# ─── Command: history (sync history tracking) ────────────────────────────────
+
+SYNC_HISTORY_FILE=".pingo/sync-history.json"
+
+record_sync_history() {
+    local cwd="$1" behind="$2"
+    ensure_metadata  # creates .pingo/ dir
+
+    local upstream_before upstream_after
+    upstream_before="${3:-}"
+    upstream_after=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo "")
+
+    # Build patch mapping
+    local mapping="[]"
+    local base
+    if base=$(patches_base 2>/dev/null); then
+        mapping="["
+        local first=true
+        local commits
+        commits=$(git rev-list --reverse "$base..$PATCHES_BRANCH" 2>/dev/null)
+        while IFS= read -r hash; do
+            [[ -z "$hash" ]] && continue
+            [[ "$first" == true ]] && first=false || mapping+=","
+            local pname="" subject
+            subject=$(git log -1 --format="%s" "$hash")
+            [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+            mapping+='{"name":"'"$pname"'","hash":"'"$(git rev-parse --short "$hash")"'"}'
+        done <<< "$commits"
+        mapping+="]"
+    fi
+
+    python3 -c "
+import json, os
+path = '$SYNC_HISTORY_FILE'
+data = {'syncs': []}
+if os.path.exists(path):
+    with open(path) as f: data = json.load(f)
+data['syncs'].append({
+    'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+    'upstream_before': '$upstream_before',
+    'upstream_after': '$upstream_after',
+    'upstream_commits_integrated': $behind,
+    'patches': $mapping
+})
+# Keep last 50 syncs
+data['syncs'] = data['syncs'][-50:]
+with open(path, 'w') as f: json.dump(data, f, indent=2)
+" 2>/dev/null || true
+}
+
+cmd_history() {
+    load_config
+    ensure_metadata
+
+    if [[ ! -f "$SYNC_HISTORY_FILE" ]]; then
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"syncs":[]}'
+        else
+            info "No sync history yet."
+        fi
+        return 0
+    fi
+
+    if [[ "$JSON_MODE" == true ]]; then
+        cat "$SYNC_HISTORY_FILE"
+        return 0
+    fi
+
+    header "Sync History"
+    echo ""
+
+    python3 -c "
+import json
+with open('$SYNC_HISTORY_FILE') as f: data = json.load(f)
+for s in reversed(data.get('syncs', [])[-10:]):
+    ts = s.get('timestamp', '?')[:16]
+    n = s.get('upstream_commits_integrated', 0)
+    patches = ', '.join(p['name'] for p in s.get('patches', []) if p.get('name'))
+    ub = s.get('upstream_before', '?')[:8]
+    ua = s.get('upstream_after', '?')[:8]
+    print(f'  {ts}  +{n} commits  {ub}→{ua}')
+    if patches:
+        print(f'    patches: {patches}')
+" 2>/dev/null || info "Could not read history."
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 show_help() {
@@ -1596,6 +1952,8 @@ main() {
         undo)               cmd_undo "$@" ;;
         diff|d)             cmd_diff "$@" ;;
         conflict-analyze)   cmd_conflict_analyze "$@" ;;
+        config)             cmd_config "$@" ;;
+        history)            cmd_history "$@" ;;
         version|-v|--version) echo "pingo-light $VERSION" ;;
         help|-h|--help|"")    show_help ;;
         *)          fatal "Unknown command: $cmd. Run 'pingo-light --help' for usage." ;;
