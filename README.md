@@ -11,7 +11,7 @@
 [![AI-native](https://img.shields.io/badge/AI--native-MCP%20%2B%20JSON-blueviolet.svg)](#why-ai-native)
 [![Bash](https://img.shields.io/badge/Made_with-Bash-1f425f.svg)](https://www.gnu.org/software/bash/)
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](.github/workflows)
-[![Version](https://img.shields.io/badge/Version-0.5.0-orange.svg)](pingo-light)
+[![Version](https://img.shields.io/badge/Version-1.0.0-orange.svg)](pingo-light)
 
 **AI-native fork maintenance. One tool for agents to manage upstream sync.**
 

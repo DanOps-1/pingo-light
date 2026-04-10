@@ -330,7 +330,7 @@ for part in reversed(parts):
     except: pass
 " 2>/dev/null || echo 0)
 
-    if [[ "$tool_count" -eq 15 ]]; then pass "MCP server registers 15 tools"; else fail "MCP tools" "expected 15, got $tool_count"; fi
+    if [[ "$tool_count" -eq 22 ]]; then pass "MCP server registers 22 tools"; else fail "MCP tools" "expected 22, got $tool_count"; fi
 else
     skip "MCP server (mcp-server.py not found)"
 fi
@@ -372,9 +372,42 @@ if json_valid "$OUT"; then pass "sync --json valid (up-to-date)"; else fail "syn
 OUT=$("$PINGO" conflict-analyze --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "conflict-analyze --json valid"; else fail "conflict-analyze --json" "invalid JSON"; fi
 
+# ─── v0.7+ features ──────────────────────────────────────────────────────────
+
+section "17. Config + Metadata + History"
+
+# Config
+run config set sync.auto true
+if has "set\|true"; then pass "config set"; else fail "config set" "no output"; fi
+
+run config get sync.auto
+if has "true"; then pass "config get"; else fail "config get" "wrong value"; fi
+
+OUT=$("$PINGO" config list --json 2>/dev/null) || true
+if json_valid "$OUT"; then pass "config list --json valid"; else fail "config list --json" "invalid"; fi
+
+# Patch metadata
+run patch meta json-test-patch --set-reason "test reason"
+if has "set\|reason"; then pass "patch meta set-reason"; else fail "patch meta" "no output"; fi
+
+OUT=$("$PINGO" patch meta json-test-patch --json 2>/dev/null) || true
+if json_valid "$OUT"; then pass "patch meta --json valid"; else fail "patch meta --json" "invalid"; fi
+
+# History (already synced above, may or may not have entries)
+OUT=$("$PINGO" history --json 2>/dev/null) || true
+if json_valid "$OUT"; then pass "history --json valid"; else fail "history --json" "invalid"; fi
+
+# Test command
+run config set test.command "true"
+run test
+if has "pass"; then pass "test command works"; else fail "test" "did not pass"; fi
+
+OUT=$("$PINGO" test --json 2>/dev/null) || true
+if json_valid "$OUT"; then pass "test --json valid"; else fail "test --json" "invalid"; fi
+
 # ─── Conflict flow ───────────────────────────────────────────────────────────
 
-section "17. Conflict Flow"
+section "18. Conflict Flow"
 
 repos=$(setup_repos conflict-flow)
 upstream="${repos%%|*}" fork_cf="${repos##*|}"
@@ -412,7 +445,7 @@ git rebase --abort &>/dev/null || true
 
 # ─── Edge cases: empty repo, non-interactive ─────────────────────────────────
 
-section "18. Non-Interactive Mode"
+section "19. Non-Interactive Mode"
 
 repos=$(setup_repos nonint)
 upstream="${repos%%|*}" fork_ni="${repos##*|}"

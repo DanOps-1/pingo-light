@@ -168,28 +168,9 @@ def analyze_conflict_details(cwd: str) -> list[dict]:
         with open(full_path) as f:
             content = f.read()
 
-        # Extract conflict regions
-        regions = []
-        in_conflict = False
-        ours_lines, theirs_lines = [], []
-        for line in content.split("\n"):
-            if line.startswith("<<<<<<< "):
-                in_conflict = True
-                ours_lines = []
-                theirs_lines = []
-            elif line.startswith("=======") and in_conflict:
-                pass  # switch from ours to theirs
-            elif line.startswith(">>>>>>> ") and in_conflict:
-                regions.append({"ours": "\n".join(ours_lines), "theirs": "\n".join(theirs_lines)})
-                in_conflict = False
-            elif in_conflict:
-                if not any(l.startswith("=======") for l in [line]):
-                    # Before ======= → ours; after → theirs
-                    # Simple heuristic: track state
-                    pass
-
-        # Simpler approach: use regex to extract regions
+        # Extract conflict regions via regex
         import re
+        regions = []
         for m in re.finditer(r'<<<<<<< [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*', content, re.DOTALL):
             regions.append({"ours": m.group(1).rstrip(), "theirs": m.group(2).rstrip()})
 

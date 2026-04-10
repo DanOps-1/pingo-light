@@ -1738,16 +1738,15 @@ patch_squash() {
 
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
 
-    # Use GIT_SEQUENCE_EDITOR to programmatically squash
+    # Use GIT_SEQUENCE_EDITOR to programmatically squash (macOS + Linux compatible)
     local script
     script=$(mktemp)
-    cat > "$script" << 'SEDEOF'
+    cat > "$script" << EOF
 #!/bin/bash
-# Change the second pick to squash
-sed -i "${IDX2}s/^pick/squash/" "$1"
-SEDEOF
+# Change pick on line $idx2 to squash (portable: no sed -i)
+awk 'NR==$idx2 && /^pick/{sub(/^pick/,"squash")} {print}' "\$1" > "\$1.tmp" && mv "\$1.tmp" "\$1"
+EOF
     chmod +x "$script"
-    sed -i "s/\${IDX2}/$idx2/" "$script"
 
     if GIT_SEQUENCE_EDITOR="$script" git rebase -i "$base" &>/dev/null; then
         rm -f "$script"
@@ -1775,57 +1774,33 @@ patch_reorder_noninteractive() {
 
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
 
-    # Parse order: "3,1,2" → reorder pick lines
-    local script
-    script=$(mktemp)
-    cat > "$script" << 'PYEOF'
-#!/usr/bin/env python3
-import sys
-with open(sys.argv[1]) as f: lines = f.readlines()
-picks = [l for l in lines if l.startswith('pick ')]
-others = [l for l in lines if not l.startswith('pick ')]
-order = [int(x.strip()) - 1 for x in sys.argv[2].split(',')]
-reordered = [picks[i] for i in order if i < len(picks)]
-with open(sys.argv[1], 'w') as f:
-    f.writelines(reordered + others)
-PYEOF
-    chmod +x "$script"
-
-    if GIT_SEQUENCE_EDITOR="python3 $script ORDER_PLACEHOLDER" git rebase -i "$base" &>/dev/null; then
-        true  # rebase expects the editor to modify the file directly, workaround below
-    fi
-    rm -f "$script"
-
-    # Simpler approach: use git rebase with specific commit ordering
-    # Actually, let's use a sed-based approach
-    local script2
-    script2=$(mktemp)
-    # Generate a sed script that reorders the pick lines
+    # Generate a GIT_SEQUENCE_EDITOR script that reorders pick lines
+    local editor_script
+    editor_script=$(mktemp)
     python3 -c "
+import sys
 order = [int(x.strip()) for x in '$order_str'.split(',')]
-print('#!/bin/bash')
-print('lines=\$(cat \"\$1\")')
-# Extract pick lines in order
+lines = []
 for i, idx in enumerate(order):
-    print(f'line{i}=\$(echo \"\$lines\" | sed -n \"{idx}p\")')
-# Write them back
+    lines.append(f'line{i}=\$(sed -n \"{idx}p\" \"\$1\")')
+writes = []
 for i in range(len(order)):
-    if i == 0:
-        print(f'echo \"\$line{i}\" > \"\$1\"')
-    else:
-        print(f'echo \"\$line{i}\" >> \"\$1\"')
-" > "$script2"
-    chmod +x "$script2"
+    op = '>' if i == 0 else '>>'
+    writes.append(f'echo \"\$line{i}\" {op} \"\$1.tmp\"')
+script = '#!/bin/bash\n' + '\n'.join(lines) + '\n' + '\n'.join(writes) + '\nmv \"\$1.tmp\" \"\$1\"\n'
+print(script)
+" > "$editor_script" 2>/dev/null
+    chmod +x "$editor_script"
 
-    if GIT_SEQUENCE_EDITOR="bash $script2" git rebase -i "$base" &>/dev/null; then
-        rm -f "$script2"
+    if GIT_SEQUENCE_EDITOR="bash $editor_script" git rebase -i "$base" &>/dev/null; then
+        rm -f "$editor_script"
         if [[ "$JSON_MODE" == true ]]; then
             json_out '{"ok":true,"reordered":"'"$order_str"'"}'
         else
             success "Patches reordered: $order_str"
         fi
     else
-        rm -f "$script2"
+        rm -f "$editor_script"
         git rebase --abort &>/dev/null || true
         fatal "Failed to reorder patches."
     fi

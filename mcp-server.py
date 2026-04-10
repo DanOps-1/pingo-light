@@ -318,6 +318,88 @@ TOOLS = [
             "required": ["cwd", "file", "content"]
         }
     },
+    {
+        "name": "pingo_config",
+        "description": "Get, set, or list pingo-light configuration values.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"},
+                "action": {"type": "string", "enum": ["get", "set", "list"], "description": "Config action"},
+                "key": {"type": "string", "description": "Config key (for get/set)"},
+                "value": {"type": "string", "description": "Config value (for set)"}
+            },
+            "required": ["cwd", "action"]
+        }
+    },
+    {
+        "name": "pingo_history",
+        "description": "Show sync history: timestamps, upstream commits integrated, patch hash mappings.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "description": "Path to the git repository"}},
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "pingo_test",
+        "description": "Run the configured test command. Set test command first: config set test.command 'make test'.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "description": "Path to the git repository"}},
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "pingo_patch_meta",
+        "description": "Get or set patch metadata (reason, tags, expires, upstream_pr, status).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"},
+                "name": {"type": "string", "description": "Patch name"},
+                "set_field": {"type": "string", "enum": ["reason", "tag", "expires", "upstream_pr", "status"], "description": "Field to set (omit to get)"},
+                "value": {"type": "string", "description": "Value to set"}
+            },
+            "required": ["cwd", "name"]
+        }
+    },
+    {
+        "name": "pingo_patch_squash",
+        "description": "Squash two adjacent patches into one.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"},
+                "index1": {"type": "integer", "description": "First patch index (1-based)"},
+                "index2": {"type": "integer", "description": "Second patch index (1-based)"}
+            },
+            "required": ["cwd", "index1", "index2"]
+        }
+    },
+    {
+        "name": "pingo_patch_reorder",
+        "description": "Reorder patches non-interactively. Provide new order as comma-separated indices.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"},
+                "order": {"type": "string", "description": "New order as comma-separated indices, e.g. '3,1,2'"}
+            },
+            "required": ["cwd", "order"]
+        }
+    },
+    {
+        "name": "pingo_workspace_status",
+        "description": "Show status of all repos in the workspace (multi-repo overview).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Any directory (workspace config is global)"}
+            },
+            "required": ["cwd"]
+        }
+    },
 ]
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
@@ -447,6 +529,36 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             }
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True}
+
+    elif name == "pingo_config":
+        action = arguments.get("action", "list")
+        if action == "get":
+            return run_pingo(["config", "get", arguments.get("key", "")], cwd)
+        elif action == "set":
+            return run_pingo(["config", "set", arguments.get("key", ""), arguments.get("value", "")], cwd)
+        else:
+            return run_pingo(["config", "list"], cwd)
+
+    elif name == "pingo_history":
+        return run_pingo(["history"], cwd)
+
+    elif name == "pingo_test":
+        return run_pingo(["test"], cwd)
+
+    elif name == "pingo_patch_meta":
+        args = ["patch", "meta", arguments["name"]]
+        if arguments.get("set_field") and arguments.get("value"):
+            args += [f"--set-{arguments['set_field']}", arguments["value"]]
+        return run_pingo(args, cwd)
+
+    elif name == "pingo_patch_squash":
+        return run_pingo(["patch", "squash", str(arguments["index1"]), str(arguments["index2"])], cwd)
+
+    elif name == "pingo_patch_reorder":
+        return run_pingo(["patch", "reorder", "--order", arguments["order"]], cwd)
+
+    elif name == "pingo_workspace_status":
+        return run_pingo(["workspace", "status"], cwd)
 
     else:
         return {

@@ -26,10 +26,12 @@ PINGO_DESCRIPTION="add feature X" pingo-light patch new feature-x --yes
 ## Project structure
 
 - `pingo-light` — The entire tool (single bash script)
-- `mcp-server.py` — MCP server (zero-dep Python 3, 15 tools)
+- `mcp-server.py` — MCP server (zero-dep Python 3, 22 tools)
+- `agent.py` — Advisor agent (monitor + analyze + auto-sync-if-safe)
+- `tui.py` — Curses terminal dashboard
 - `install.sh` — Copies to /usr/local/bin
 - `llms.txt` — Complete reference for LLM consumption
-- `tests/test.sh` — 50 tests
+- `tests/test.sh` — 71 tests
 - `completions/` — bash/zsh/fish tab completion
 
 ## MCP Server setup
@@ -46,7 +48,7 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-## MCP Tools (15)
+## MCP Tools (22)
 
 | Tool | Purpose |
 |------|---------|
@@ -60,11 +62,18 @@ Add to `~/.claude/settings.json`:
 | `pingo_patch_drop` | Remove patch |
 | `pingo_patch_export` | Export as .patch files |
 | `pingo_patch_import` | Import .patch files |
+| `pingo_patch_meta` | Get/set patch metadata (reason, tags, expires) |
+| `pingo_patch_squash` | Squash two patches into one |
+| `pingo_patch_reorder` | Reorder patches non-interactively |
 | `pingo_doctor` | Diagnostic check |
 | `pingo_diff` | Total diff vs upstream |
 | `pingo_auto_sync` | Generate GitHub Actions workflow |
 | `pingo_conflict_analyze` | Structured conflict info (ours/theirs/hints) |
 | `pingo_conflict_resolve` | Write resolved content, stage, continue rebase |
+| `pingo_config` | Get/set/list configuration |
+| `pingo_history` | Sync history with hash mappings |
+| `pingo_test` | Run configured test suite |
+| `pingo_workspace_status` | Multi-repo workspace overview |
 
 All tools require `cwd` parameter.
 
