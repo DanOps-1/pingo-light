@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-VERSION="0.5.1"
+VERSION="0.6.0"
 CONFIG_FILE=".pingolight"
 PATCH_PREFIX="[pl]"
 MAX_PATCHES=100
@@ -53,7 +53,11 @@ dim()     { [[ "$JSON_MODE" == true ]] && return; echo -e "${DIM}$*${RESET}"; }
 
 # ─── JSON Helpers ─────────────────────────────────────────────────────────────
 
-json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' '; }
+json_escape() {
+    # Read all input, escape for JSON string value
+    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' \
+        -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g'
+}
 json_out()    { echo "$1"; }
 
 # Prompt helper: auto-answers "y" in non-interactive/YES mode
@@ -381,7 +385,11 @@ patch_list() {
 
     local base
     base=$(patches_base) || {
-        info "No patches yet. Create one with: ${CYAN}pingo-light patch new <name>${RESET}"
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"patches":[],"count":0}'
+        else
+            info "No patches yet. Create one with: ${CYAN}pingo-light patch new <name>${RESET}"
+        fi
         return 0
     }
 
@@ -389,18 +397,42 @@ patch_list() {
     commits=$(git rev-list --reverse "$base..$PATCHES_BRANCH" 2>/dev/null)
 
     if [[ -z "$commits" ]]; then
-        info "No patches yet. Create one with: ${CYAN}pingo-light patch new <name>${RESET}"
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"patches":[],"count":0}'
+        else
+            info "No patches yet. Create one with: ${CYAN}pingo-light patch new <name>${RESET}"
+        fi
         return 0
     fi
 
     local verbose="${1:-}"
+    local total
+    total=$(echo "$commits" | wc -l)
+
+    # JSON mode
+    if [[ "$JSON_MODE" == true ]]; then
+        local json_patches="["
+        local first=true
+        while IFS= read -r hash; do
+            local short_hash subject pname files_count stat
+            short_hash=$(git rev-parse --short "$hash")
+            subject=$(git log -1 --format="%s" "$hash")
+            pname=""
+            [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
+            stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
+            [[ "$first" == true ]] && first=false || json_patches+=","
+            json_patches+='{"name":"'"$pname"'","hash":"'"$short_hash"'","subject":"'"$(echo "$subject" | json_escape)"'","files":'"$files_count"',"stat":"'"$stat"'"}'
+        done <<< "$commits"
+        json_patches+="]"
+        json_out '{"ok":true,"patches":'"$json_patches"',"count":'"$total"'}'
+        return 0
+    fi
 
     header "Patch Stack (bottom = applied first)"
     echo ""
 
     local index=1
-    local total
-    total=$(echo "$commits" | wc -l)
 
     while IFS= read -r hash; do
         local short_hash subject files_changed insertions deletions stat_summary
@@ -409,7 +441,7 @@ patch_list() {
 
         # Parse patch name from commit message
         local patch_name=""
-        if [[ "$subject" =~ ^\[fp\]\ ([^:]+): ]]; then
+        if [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]]; then
             patch_name="${BASH_REMATCH[1]}"
         fi
 
@@ -464,6 +496,20 @@ patch_show() {
     local hash
     hash=$(resolve_patch "$target") || return 1
 
+    if [[ "$JSON_MODE" == true ]]; then
+        local subject short_hash stat diff_content pname
+        short_hash=$(git rev-parse --short "$hash")
+        subject=$(git log -1 --format="%s" "$hash" | json_escape)
+        pname=""
+        local raw_subj
+        raw_subj=$(git log -1 --format="%s" "$hash")
+        [[ "$raw_subj" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+        stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
+        diff_content=$(git diff-tree --no-commit-id -p "$hash" | json_escape)
+        json_out '{"ok":true,"patch":{"name":"'"$pname"'","hash":"'"$short_hash"'","subject":"'"$subject"'","stat":"'"$stat"'","diff":"'"$diff_content"'"}}'
+        return 0
+    fi
+
     git show "$hash" --stat --patch
 }
 
@@ -494,8 +540,15 @@ patch_drop() {
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH"
 
     # Use rebase to drop the specific commit
+    local pname=""
+    [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+
     if git rebase --onto "${hash}^" "$hash" "$PATCHES_BRANCH" 2>/dev/null; then
-        success "Patch dropped."
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"dropped":"'"$pname"'","hash":"'"$(git rev-parse --short "$hash")"'"}'
+        else
+            success "Patch dropped."
+        fi
     else
         git rebase --abort 2>/dev/null || true
         fatal "Failed to drop patch. There may be dependencies between patches."
@@ -545,7 +598,7 @@ patch_edit() {
 
 patch_export() {
     load_config
-    local output_dir="${1:-.fp-patches}"
+    local output_dir="${1:-.pl-patches}"
 
     local base
     base=$(patches_base) || {
@@ -570,6 +623,18 @@ patch_export() {
 
     # Also create a series file (quilt-compatible)
     ls "$output_dir"/*.patch 2>/dev/null | sort | xargs -I{} basename {} > "$output_dir/series"
+
+    if [[ "$JSON_MODE" == true ]]; then
+        local files_json="["
+        local first=true
+        for f in "$output_dir"/*.patch; do
+            [[ "$first" == true ]] && first=false || files_json+=","
+            files_json+='"'"$(basename "$f")"'"'
+        done
+        files_json+="]"
+        json_out '{"ok":true,"count":'"$count"',"directory":"'"$output_dir"'","files":'"$files_json"'}'
+        return 0
+    fi
 
     success "Exported $count patch(es)."
     echo ""
@@ -822,32 +887,40 @@ cmd_sync() {
     echo ""
 
     if git rebase --onto "$TRACKING_BRANCH" "$saved_tracking" "$PATCHES_BRANCH" 2>&1; then
-        echo ""
-        success "Sync complete! All ${patch_count} patch(es) rebased cleanly."
-
-        # Show summary
-        local new_behind
-        new_behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo 0)
-        if [[ "$new_behind" -eq 0 ]]; then
-            dim "  You are now up to date with upstream."
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"synced":true,"behind_before":'"$behind"',"patches_rebased":'"$patch_count"'}'
+        else
+            echo ""
+            success "Sync complete! All ${patch_count} patch(es) rebased cleanly."
+            local new_behind
+            new_behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo 0)
+            if [[ "$new_behind" -eq 0 ]]; then
+                dim "  You are now up to date with upstream."
+            fi
         fi
     else
-        echo ""
-        warn "Rebase conflict detected!"
-        echo ""
-        echo -e "  ${BOLD}What to do:${RESET}"
-        echo ""
-        echo "  1. Fix the conflicts in the listed files"
-        echo "  2. Stage the fixes:  git add <files>"
-        echo "  3. Continue rebase:  git rebase --continue"
-        echo "  4. Repeat until done"
-        echo ""
-        echo -e "  ${BOLD}Or to abort:${RESET}"
-        echo "  git rebase --abort"
-        echo "  git branch -f $TRACKING_BRANCH $saved_tracking"
-        echo ""
-        echo -e "  ${DIM}Tip: git rerere is enabled, so resolved conflicts are remembered"
-        echo -e "  for next time. You only solve each conflict once!${RESET}"
+        if [[ "$JSON_MODE" == true ]]; then
+            local conflicted_files
+            conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null | json_escape)
+            json_out '{"ok":false,"synced":false,"conflict":true,"conflicted_files":"'"$conflicted_files"'","abort_cmd":"git rebase --abort","tracking_restore":"git branch -f '"$TRACKING_BRANCH"' '"$saved_tracking"'"}'
+        else
+            echo ""
+            warn "Rebase conflict detected!"
+            echo ""
+            echo -e "  ${BOLD}What to do:${RESET}"
+            echo ""
+            echo "  1. Fix the conflicts in the listed files"
+            echo "  2. Stage the fixes:  git add <files>"
+            echo "  3. Continue rebase:  git rebase --continue"
+            echo "  4. Repeat until done"
+            echo ""
+            echo -e "  ${BOLD}Or to abort:${RESET}"
+            echo "  git rebase --abort"
+            echo "  git branch -f $TRACKING_BRANCH $saved_tracking"
+            echo ""
+            echo -e "  ${DIM}Tip: git rerere is enabled, so resolved conflicts are remembered"
+            echo -e "  for next time. You only solve each conflict once!${RESET}"
+        fi
         return 1
     fi
 }
@@ -962,99 +1035,110 @@ cmd_status() {
 cmd_doctor() {
     load_config
 
-    header "pingo-light doctor"
-    echo ""
-
     local issues=0
+    local checks_json="["
+    local json_first=true
+
+    _check() {
+        local name="$1" status="$2" detail="${3:-}"
+        if [[ "$JSON_MODE" == true ]]; then
+            [[ "$json_first" == true ]] && json_first=false || checks_json+=","
+            checks_json+='{"name":"'"$name"'","status":"'"$status"'","detail":"'"$(echo "$detail" | json_escape)"'"}'
+        fi
+        if [[ "$status" == "fail" ]]; then issues=$((issues + 1)); fi
+    }
+
+    [[ "$JSON_MODE" != true ]] && { header "pingo-light doctor"; echo ""; }
 
     # Check git version
     local git_ver
     git_ver=$(git --version | awk '{print $3}')
-    echo -e "  git version: ${GREEN}${git_ver}${RESET}"
+    _check "git" "pass" "$git_ver"
+    [[ "$JSON_MODE" != true ]] && echo -e "  git version: ${GREEN}${git_ver}${RESET}"
 
-    # Check rerere
     local rerere_enabled
     rerere_enabled=$(git config rerere.enabled 2>/dev/null || echo "false")
     if [[ "$rerere_enabled" == "true" ]]; then
-        echo -e "  rerere: ${GREEN}enabled${RESET}"
+        _check "rerere" "pass" "enabled"
+        [[ "$JSON_MODE" != true ]] && echo -e "  rerere: ${GREEN}enabled${RESET}"
     else
-        echo -e "  rerere: ${RED}disabled${RESET} (run: git config rerere.enabled true)"
-        ((issues++))
+        _check "rerere" "fail" "disabled"
+        [[ "$JSON_MODE" != true ]] && echo -e "  rerere: ${RED}disabled${RESET}"
     fi
 
-    # Check upstream remote
     local upstream_url_actual
     upstream_url_actual=$(git remote get-url upstream 2>/dev/null || echo "")
     if [[ -n "$upstream_url_actual" ]]; then
-        echo -e "  upstream remote: ${GREEN}configured${RESET} ($upstream_url_actual)"
+        _check "upstream_remote" "pass" "$upstream_url_actual"
+        [[ "$JSON_MODE" != true ]] && echo -e "  upstream remote: ${GREEN}configured${RESET}"
     else
-        echo -e "  upstream remote: ${RED}not found${RESET}"
-        ((issues++))
+        _check "upstream_remote" "fail" "not found"
+        [[ "$JSON_MODE" != true ]] && echo -e "  upstream remote: ${RED}not found${RESET}"
     fi
 
-    # Check tracking branch
     if git rev-parse --verify "$TRACKING_BRANCH" &>/dev/null; then
-        echo -e "  tracking branch ($TRACKING_BRANCH): ${GREEN}exists${RESET}"
+        _check "tracking_branch" "pass" "$TRACKING_BRANCH"
+        [[ "$JSON_MODE" != true ]] && echo -e "  tracking branch: ${GREEN}exists${RESET}"
     else
-        echo -e "  tracking branch ($TRACKING_BRANCH): ${RED}missing${RESET}"
-        ((issues++))
+        _check "tracking_branch" "fail" "missing"
+        [[ "$JSON_MODE" != true ]] && echo -e "  tracking branch: ${RED}missing${RESET}"
     fi
 
-    # Check patches branch
     if git rev-parse --verify "$PATCHES_BRANCH" &>/dev/null; then
-        echo -e "  patches branch ($PATCHES_BRANCH): ${GREEN}exists${RESET}"
+        _check "patches_branch" "pass" "$PATCHES_BRANCH"
+        [[ "$JSON_MODE" != true ]] && echo -e "  patches branch: ${GREEN}exists${RESET}"
     else
-        echo -e "  patches branch ($PATCHES_BRANCH): ${RED}missing${RESET}"
-        ((issues++))
+        _check "patches_branch" "fail" "missing"
+        [[ "$JSON_MODE" != true ]] && echo -e "  patches branch: ${RED}missing${RESET}"
     fi
 
-    # Check if patches apply cleanly on current upstream
-    echo ""
+    # Patch stack integrity
     if [[ "$issues" -eq 0 ]]; then
-        info "Testing patch stack integrity..."
-
+        [[ "$JSON_MODE" != true ]] && { echo ""; info "Testing patch stack integrity..."; }
         local base
-        base=$(patches_base) || { success "No patches to test."; return 0; }
-
+        base=$(patches_base) || {
+            _check "patch_stack" "pass" "no patches"
+            [[ "$JSON_MODE" == true ]] && { checks_json+="]"; json_out '{"ok":true,"issues":0,"checks":'"$checks_json"'}'; }
+            [[ "$JSON_MODE" != true ]] && success "No patches to test."
+            return 0
+        }
         local patch_count
         patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH")
-
         if [[ "$patch_count" -eq 0 ]]; then
-            success "No patches to test."
+            _check "patch_stack" "pass" "no patches"
         else
-            # Quick test: try rebase on a temp branch
             local tmp_branch="pl-doctor-$$"
             git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
-
             local current_tracking
             current_tracking=$(git rev-parse "$TRACKING_BRANCH")
-
-            if git rebase --onto "upstream/$UPSTREAM_BRANCH" "$current_tracking" "$tmp_branch" 2>/dev/null; then
-                echo -e "  patch stack: ${GREEN}all $patch_count patch(es) apply cleanly on latest upstream${RESET}"
-                git checkout "$PATCHES_BRANCH" 2>/dev/null || true
+            if git rebase --onto "upstream/$UPSTREAM_BRANCH" "$current_tracking" "$tmp_branch" &>/dev/null; then
+                _check "patch_stack" "pass" "all $patch_count patch(es) clean"
+                [[ "$JSON_MODE" != true ]] && echo -e "  patch stack: ${GREEN}all $patch_count patch(es) apply cleanly${RESET}"
+                git checkout "$PATCHES_BRANCH" &>/dev/null || true
             else
-                echo -e "  patch stack: ${YELLOW}conflicts detected against latest upstream${RESET}"
-                git rebase --abort 2>/dev/null || true
-                git checkout "$PATCHES_BRANCH" 2>/dev/null || true
-                ((issues++))
+                _check "patch_stack" "fail" "conflicts detected"
+                [[ "$JSON_MODE" != true ]] && echo -e "  patch stack: ${YELLOW}conflicts detected${RESET}"
+                git rebase --abort &>/dev/null || true
+                git checkout "$PATCHES_BRANCH" &>/dev/null || true
             fi
-            git branch -D "$tmp_branch" 2>/dev/null || true
+            git branch -D "$tmp_branch" &>/dev/null || true
         fi
     fi
 
-    # Check config file
     if [[ -f "$CONFIG_FILE" ]]; then
-        echo -e "  config file: ${GREEN}present${RESET}"
+        _check "config" "pass" "present"
+        [[ "$JSON_MODE" != true ]] && echo -e "  config file: ${GREEN}present${RESET}"
     else
-        echo -e "  config file: ${RED}missing${RESET}"
-        ((issues++))
+        _check "config" "fail" "missing"
+        [[ "$JSON_MODE" != true ]] && echo -e "  config file: ${RED}missing${RESET}"
     fi
 
-    echo ""
-    if [[ "$issues" -eq 0 ]]; then
-        success "Everything looks good!"
+    if [[ "$JSON_MODE" == true ]]; then
+        checks_json+="]"
+        json_out '{"ok":'"$([ "$issues" -eq 0 ] && echo true || echo false)"',"issues":'"$issues"',"checks":'"$checks_json"'}'
     else
-        warn "$issues issue(s) found."
+        echo ""
+        if [[ "$issues" -eq 0 ]]; then success "Everything looks good!"; else warn "$issues issue(s) found."; fi
     fi
 }
 
@@ -1165,12 +1249,15 @@ jobs:
             });
 WORKFLOW_EOF
 
-    # Replace placeholders
-    sed -i "s|CRON_PLACEHOLDER|$cron_schedule|g" "$output_file"
-    sed -i "s|UPSTREAM_PLACEHOLDER|$UPSTREAM_URL|g" "$output_file"
-    sed -i "s|BRANCH_PLACEHOLDER|$UPSTREAM_BRANCH|g" "$output_file"
-    sed -i "s|TRACKING_PLACEHOLDER|$TRACKING_BRANCH|g" "$output_file"
-    sed -i "s|PATCHES_PLACEHOLDER|$PATCHES_BRANCH|g" "$output_file"
+    # Replace placeholders (bash parameter expansion — safe for any URL characters)
+    local content
+    content=$(<"$output_file")
+    content="${content//CRON_PLACEHOLDER/$cron_schedule}"
+    content="${content//UPSTREAM_PLACEHOLDER/$UPSTREAM_URL}"
+    content="${content//BRANCH_PLACEHOLDER/$UPSTREAM_BRANCH}"
+    content="${content//TRACKING_PLACEHOLDER/$TRACKING_BRANCH}"
+    content="${content//PATCHES_PLACEHOLDER/$PATCHES_BRANCH}"
+    echo "$content" > "$output_file"
 
     success "Workflow generated: ${BOLD}${output_file}${RESET}"
     echo ""
@@ -1186,10 +1273,22 @@ WORKFLOW_EOF
 cmd_log() {
     load_config
 
+    if [[ "$JSON_MODE" == true ]]; then
+        local entries_json="["
+        local first=true
+        while IFS='|' read -r ref date action; do
+            [[ -z "$ref" ]] && continue
+            [[ "$first" == true ]] && first=false || entries_json+=","
+            entries_json+='{"ref":"'"$(echo "$ref" | json_escape)"'","date":"'"$(echo "$date" | json_escape)"'","action":"'"$(echo "$action" | json_escape)"'"}'
+        done < <(git reflog "$TRACKING_BRANCH" --format="%gd|%cr|%gs" -20 2>/dev/null)
+        entries_json+="]"
+        json_out '{"ok":true,"entries":'"$entries_json"'}'
+        return 0
+    fi
+
     header "Sync history"
     echo ""
 
-    # Show reflog entries for the tracking branch
     git reflog "$TRACKING_BRANCH" --format="%C(cyan)%gd%C(reset) %C(dim)%cr%C(reset) %gs" -20 2>/dev/null || {
         info "No sync history yet."
     }
@@ -1240,9 +1339,17 @@ cmd_diff() {
 
     local base
     base=$(patches_base) || {
-        info "No patches — nothing to diff."
+        if [[ "$JSON_MODE" == true ]]; then json_out '{"ok":true,"stat":"","diff":""}'; else info "No patches — nothing to diff."; fi
         return 0
     }
+
+    if [[ "$JSON_MODE" == true ]]; then
+        local stat diff_content
+        stat=$(git diff "$base..$PATCHES_BRANCH" --stat | json_escape)
+        diff_content=$(git diff "$base..$PATCHES_BRANCH" | json_escape)
+        json_out '{"ok":true,"stat":"'"$stat"'","diff":"'"$diff_content"'"}'
+        return 0
+    fi
 
     header "All changes from your patch stack:"
     echo ""

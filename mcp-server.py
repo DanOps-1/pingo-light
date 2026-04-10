@@ -418,7 +418,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_pingo(["conflict-analyze", "--json"], cwd)
 
     elif name == "pingo_conflict_resolve":
-        file_path = os.path.join(cwd, arguments["file"])
+        file_path = os.path.realpath(os.path.join(cwd, arguments["file"]))
+        real_cwd = os.path.realpath(cwd)
+        if not file_path.startswith(real_cwd + os.sep) and file_path != real_cwd:
+            return {"content": [{"type": "text", "text": f"Security: path escapes repository: {arguments['file']}"}], "isError": True}
+        if not os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) and not os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
+            return {"content": [{"type": "text", "text": "Not in a rebase. Nothing to resolve."}], "isError": True}
         content = arguments["content"]
         try:
             with open(file_path, "w") as f:
@@ -508,7 +513,7 @@ def main():
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "pingo-light",
-                    "version": "0.1.0",
+                    "version": "0.6.0",
                 },
             }))
 
