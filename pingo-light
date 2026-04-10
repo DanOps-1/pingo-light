@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-VERSION="0.8.0"
+VERSION="0.9.0"
 CONFIG_FILE=".pingolight"
 PATCH_PREFIX="[pl]"
 MAX_PATCHES=100
@@ -1950,6 +1950,137 @@ cmd_test() {
     fi
 }
 
+# ─── Command: workspace ───────────────────────────────────────────────────────
+
+WORKSPACE_CONFIG="${HOME}/.config/pingo-light/workspace.json"
+
+cmd_workspace() {
+    local subcmd="${1:-}"
+    shift 2>/dev/null || true
+
+    case "$subcmd" in
+        init)
+            mkdir -p "$(dirname "$WORKSPACE_CONFIG")"
+            [[ -f "$WORKSPACE_CONFIG" ]] || echo '{"repos":[]}' > "$WORKSPACE_CONFIG"
+            success "Workspace initialized: $WORKSPACE_CONFIG"
+            ;;
+        add)
+            local repo_path="${1:-$(pwd)}"
+            repo_path=$(cd "$repo_path" 2>/dev/null && pwd)
+            local alias="${2:-$(basename "$repo_path")}"
+            [[ -f "$WORKSPACE_CONFIG" ]] || { fatal "Run 'pingo-light workspace init' first."; }
+
+            python3 -c "
+import json
+with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+repos = data.setdefault('repos', [])
+if not any(r['path'] == '$repo_path' for r in repos):
+    repos.append({'path': '$repo_path', 'alias': '$alias'})
+with open('$WORKSPACE_CONFIG', 'w') as f: json.dump(data, f, indent=2)
+print('OK Added: $alias ($repo_path)')
+" 2>/dev/null
+            ;;
+        status)
+            [[ -f "$WORKSPACE_CONFIG" ]] || { fatal "No workspace. Run 'pingo-light workspace init'."; }
+
+            if [[ "$JSON_MODE" == true ]]; then
+                local results="["
+                local first=true
+                while IFS='|' read -r path alias; do
+                    [[ -z "$path" ]] && continue
+                    [[ "$first" == true ]] && first=false || results+=","
+                    local st
+                    st=$("$0" --json --yes status 2>/dev/null < /dev/null) || st='{"ok":false}'
+                    # Run in subshell with cd
+                    st=$(cd "$path" 2>/dev/null && "$0" --json --yes status 2>/dev/null < /dev/null) || st='{"ok":false}'
+                    results+='{"alias":"'"$alias"'","path":"'"$path"'","status":'"$st"'}'
+                done < <(python3 -c "
+import json
+with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+for r in data.get('repos', []):
+    print(f\"{r['path']}|{r['alias']}\")
+" 2>/dev/null)
+                results+="]"
+                json_out '{"ok":true,"repos":'"$results"'}'
+            else
+                header "Workspace Status"
+                echo ""
+                printf "  ${BOLD}%-20s %-8s %-8s %s${RESET}\n" "Repo" "Behind" "Patches" "Risk"
+                echo "  ──────────────────────────────────────────────────"
+
+                while IFS='|' read -r path alias; do
+                    [[ -z "$path" ]] && continue
+                    local st
+                    st=$(cd "$path" 2>/dev/null && "$0" --json --yes status 2>/dev/null < /dev/null) || st='{}'
+                    local behind patches risk
+                    behind=$(echo "$st" | python3 -c "import json,sys; print(json.load(sys.stdin).get('behind','?'))" 2>/dev/null || echo "?")
+                    patches=$(echo "$st" | python3 -c "import json,sys; print(json.load(sys.stdin).get('patch_count','?'))" 2>/dev/null || echo "?")
+                    risk=$(echo "$st" | python3 -c "import json,sys; r=json.load(sys.stdin).get('conflict_risk',[]); print(len(r))" 2>/dev/null || echo "?")
+
+                    local risk_str="none"
+                    [[ "$risk" != "0" && "$risk" != "?" ]] && risk_str="${RED}${risk} file(s)${RESET}"
+                    [[ "$risk" == "0" ]] && risk_str="${GREEN}none${RESET}"
+
+                    printf "  %-20s %-8s %-8s %b\n" "$alias" "$behind" "$patches" "$risk_str"
+                done < <(python3 -c "
+import json
+with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+for r in data.get('repos', []):
+    print(f\"{r['path']}|{r['alias']}\")
+" 2>/dev/null)
+                echo ""
+            fi
+            ;;
+        sync)
+            [[ -f "$WORKSPACE_CONFIG" ]] || { fatal "No workspace."; }
+            info "Syncing all safe repos..."
+            while IFS='|' read -r path alias; do
+                [[ -z "$path" ]] && continue
+                info "  $alias:"
+                local result
+                result=$(cd "$path" 2>/dev/null && "$0" --yes sync --force 2>&1) || true
+                if echo "$result" | grep -qi "sync complete\|up to date"; then
+                    success "    synced"
+                elif echo "$result" | grep -qi "conflict"; then
+                    warn "    conflict — skipped"
+                else
+                    warn "    failed"
+                fi
+            done < <(python3 -c "
+import json
+with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+for r in data.get('repos', []):
+    print(f\"{r['path']}|{r['alias']}\")
+" 2>/dev/null)
+            success "Workspace sync complete."
+            ;;
+        list)
+            [[ -f "$WORKSPACE_CONFIG" ]] || { fatal "No workspace."; }
+            if [[ "$JSON_MODE" == true ]]; then
+                cat "$WORKSPACE_CONFIG"
+            else
+                python3 -c "
+import json
+with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+for r in data.get('repos', []):
+    print(f\"  {r['alias']:20s} {r['path']}\")
+" 2>/dev/null
+            fi
+            ;;
+        *)
+            echo -e "${BOLD}Usage:${RESET} pingo-light workspace <command>"
+            echo ""
+            echo "Commands:"
+            echo -e "  ${CYAN}init${RESET}                  Initialize workspace config"
+            echo -e "  ${CYAN}add${RESET} [path] [alias]    Add repo to workspace"
+            echo -e "  ${CYAN}list${RESET}                  List registered repos"
+            echo -e "  ${CYAN}status${RESET}                Status of all repos"
+            echo -e "  ${CYAN}sync${RESET}                  Sync all safe repos"
+            return 1
+            ;;
+    esac
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 show_help() {
@@ -2026,6 +2157,7 @@ main() {
         config)             cmd_config "$@" ;;
         history)            cmd_history "$@" ;;
         test)               cmd_test "$@" ;;
+        workspace|ws)       cmd_workspace "$@" ;;
         version|-v|--version) echo "pingo-light $VERSION" ;;
         help|-h|--help|"")    show_help ;;
         *)          fatal "Unknown command: $cmd. Run 'pingo-light --help' for usage." ;;

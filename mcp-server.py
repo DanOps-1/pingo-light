@@ -513,7 +513,7 @@ def main():
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "pingo-light",
-                    "version": "0.8.0",
+                    "version": "0.9.0",
                 },
             }))
 
