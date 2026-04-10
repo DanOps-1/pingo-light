@@ -442,7 +442,7 @@ patch_list() {
             short_hash=$(git rev-parse --short "$hash")
             subject=$(git log -1 --format="%s" "$hash")
             pname=""
-            [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+            [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
             files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
             stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
             [[ "$first" == true ]] && first=false || json_patches+=","
@@ -465,7 +465,7 @@ patch_list() {
 
         # Parse patch name from commit message
         local patch_name=""
-        if [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]]; then
+        if [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]]; then
             patch_name="${BASH_REMATCH[1]}"
         fi
 
@@ -527,7 +527,7 @@ patch_show() {
         pname=""
         local raw_subj
         raw_subj=$(git log -1 --format="%s" "$hash")
-        [[ "$raw_subj" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+        [[ "$raw_subj" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
         stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
         diff_content=$(git diff-tree --no-commit-id -p "$hash" | json_escape)
         json_out '{"ok":true,"patch":{"name":"'"$pname"'","hash":"'"$short_hash"'","subject":"'"$subject"'","stat":"'"$stat"'","diff":"'"$diff_content"'"}}'
@@ -565,7 +565,7 @@ patch_drop() {
 
     # Use rebase to drop the specific commit
     local pname=""
-    [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+    [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
 
     if git rebase --onto "${hash}^" "$hash" "$PATCHES_BRANCH" 2>/dev/null; then
         if [[ "$JSON_MODE" == true ]]; then
@@ -622,7 +622,7 @@ patch_edit() {
 
 patch_export() {
     load_config
-    local output_dir="${1:-.pl-patches}"
+    local output_dir="${1:-.bl-patches}"
 
     local base
     base=$(patches_base) || {
@@ -862,11 +862,11 @@ cmd_sync() {
         echo ""
 
         # Create a temporary branch to test
-        local tmp_branch="pl-dryrun-$$"
+        local tmp_branch="bl-dryrun-$$"
         git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
 
         # Update tracking to test against
-        local tmp_tracking="pl-dryrun-tracking-$$"
+        local tmp_tracking="bl-dryrun-tracking-$$"
         git branch "$tmp_tracking" "upstream/$UPSTREAM_BRANCH" 2>/dev/null
 
         if git rebase --onto "$tmp_tracking" "$TRACKING_BRANCH" "$tmp_branch" 2>/dev/null; then
@@ -903,11 +903,15 @@ cmd_sync() {
     # 5. Ensure we're on the patches branch
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH"
 
-    # 6. Save current state for rollback
+    # 6. Save current state for rollback (persist for undo)
     local saved_head
     saved_head=$(git rev-parse HEAD)
     local saved_tracking
     saved_tracking=$(git rev-parse "$TRACKING_BRANCH")
+
+    # Persist for undo command
+    mkdir -p .bingo
+    echo "$saved_tracking" > .bingo/.undo-tracking
 
     # 7. Update tracking branch
     info "Updating tracking branch..."
@@ -1161,7 +1165,7 @@ cmd_doctor() {
         if [[ "$patch_count" -eq 0 ]]; then
             _check "patch_stack" "pass" "no patches"
         else
-            local tmp_branch="pl-doctor-$$"
+            local tmp_branch="bl-doctor-$$"
             git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
             local current_tracking
             current_tracking=$(git rev-parse "$TRACKING_BRANCH")
@@ -1380,10 +1384,22 @@ cmd_undo() {
     echo ""
     confirm "Proceed? [y/N]" "n" || { info "Cancelled."; return 0; }
 
-    git branch -f "$PATCHES_BRANCH" "$prev_head"
-    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] && git reset --hard "$prev_head"
+    # Restore patches branch
+    if [[ "$(current_branch)" == "$PATCHES_BRANCH" ]]; then
+        git reset --hard "$prev_head"
+    else
+        git branch -f "$PATCHES_BRANCH" "$prev_head"
+    fi
 
-    success "Undone. Patches branch restored to previous state."
+    # Restore tracking branch from saved state (so sync can re-detect upstream)
+    if [[ -f .bingo/.undo-tracking ]]; then
+        local prev_tracking
+        prev_tracking=$(cat .bingo/.undo-tracking)
+        git branch -f "$TRACKING_BRANCH" "$prev_tracking"
+        rm -f .bingo/.undo-tracking
+    fi
+
+    success "Undone. Patches and tracking branches restored."
 }
 
 # ─── Command: diff ────────────────────────────────────────────────────────────
@@ -1537,7 +1553,7 @@ cmd_json_status() {
             local pname=""
             local raw_subject
             raw_subject=$(git log -1 --format="%s" "$hash")
-            if [[ "$raw_subject" =~ ^\[pl\]\ ([^:]+): ]]; then
+            if [[ "$raw_subject" =~ ^\[bl\]\ ([^:]+): ]]; then
                 pname="${BASH_REMATCH[1]}"
             fi
 
@@ -1831,7 +1847,7 @@ record_sync_history() {
             [[ "$first" == true ]] && first=false || mapping+=","
             local pname="" subject
             subject=$(git log -1 --format="%s" "$hash")
-            [[ "$subject" =~ ^\[pl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
+            [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
             mapping+='{"name":"'"$pname"'","hash":"'"$(git rev-parse --short "$hash")"'"}'
         done <<< "$commits"
         mapping+="]"
