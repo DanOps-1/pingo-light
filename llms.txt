@@ -1,0 +1,251 @@
+# pingo-light
+
+> Dead-simple fork maintenance CLI. Manages customizations as a clean patch stack on top of upstream open-source projects.
+
+Single-file bash tool. Zero dependencies beyond git + bash.
+
+## Problem it solves
+
+When you fork an open-source project and add your own features, syncing with upstream becomes painful: merge conflicts, lost customizations, hours of manual review. pingo-light turns this into a one-command operation by organizing your changes as an ordered patch stack that gets cleanly rebased onto upstream updates.
+
+## Mental model
+
+```
+upstream-tracking   (mirrors upstream exactly, never touched by user)
+       |
+       v
+  pingo-patches     (user's branch: patch stack on top of upstream)
+       |
+       +-- [pl] feature-a: description  (commit 1 = patch 1)
+       +-- [pl] feature-b: description  (commit 2 = patch 2)
+       +-- [pl] fix-c: description      (commit 3 = patch 3)
+```
+
+Each patch = one git commit with prefix `[pl]`. Syncing = fetch upstream + rebase the patch stack. git rerere is auto-enabled to remember conflict resolutions.
+
+## Installation
+
+```bash
+cp pingo-light /usr/local/bin/    # or: ./install.sh
+```
+
+## Complete command reference
+
+### pingo-light init <upstream-url> [branch]
+
+Initialize pingo-light in a git repository. Sets up upstream remote, creates tracking branch (mirrors upstream) and patches branch (where user's changes go). Auto-detects upstream default branch. Enables git rerere. If current branch has commits ahead of upstream, offers to adopt them as the initial patch stack.
+
+Creates `.pingolight` config file in repo root.
+
+**Arguments:**
+- `upstream-url` (required): URL of the original upstream repository
+- `branch` (optional): upstream branch to track. Auto-detected if omitted, defaults to `main`
+
+**Example:**
+```bash
+cd my-forked-project
+pingo-light init https://github.com/original/project.git
+pingo-light init https://github.com/original/project.git develop
+```
+
+### pingo-light patch new <name>
+
+Create a new patch from current changes. If changes are staged, only staged changes are used. If nothing is staged, all modifications + untracked files are staged automatically. Prompts for an optional one-line description.
+
+Patch names must be alphanumeric with hyphens/underscores, starting with a letter or number. Duplicate names are rejected.
+
+Must be on the pingo-patches branch (auto-switches if not).
+
+**Example:**
+```bash
+vim src/feature.py
+pingo-light patch new add-dark-mode
+```
+
+### pingo-light patch list [-v]
+
+List all patches in the stack, bottom-first (first applied = first listed). Shows patch name, short hash, and change stats. With `-v`, also shows per-file changes (A/M/D).
+
+### pingo-light patch show <name|index>
+
+Show full diff and stats for a specific patch. Accepts patch name or 1-based numeric index from `patch list`.
+
+### pingo-light patch edit <name|index>
+
+Amend an existing patch. Stage your fixes first (`git add`), then run this. Uses git fixup + autosquash rebase internally.
+
+### pingo-light patch drop <name|index>
+
+Remove a patch from the stack. Confirms before acting. Uses rebase internally, may fail if later patches depend on the dropped one.
+
+### pingo-light patch export [dir]
+
+Export all patches as numbered `.patch` files (git format-patch) plus a `series` file (quilt-compatible). Default output directory: `.pl-patches/`.
+
+### pingo-light patch import <file|dir>
+
+Import `.patch` file(s) into the stack via `git am`. If given a directory, reads `series` file for ordering, falls back to alphabetical.
+
+### pingo-light patch reorder
+
+Open interactive rebase editor to reorder, squash, or drop patches. Uses `$EDITOR` (default: vi).
+
+### pingo-light sync [--dry-run|-n] [--force|-f]
+
+Sync with upstream. Fetches upstream, updates tracking branch, rebases all patches onto new upstream HEAD.
+
+**Flags:**
+- `--dry-run` / `-n`: Test rebase on a temporary branch without modifying anything. Reports whether rebase would succeed and lists conflicted files if not.
+- `--force` / `-f`: Skip confirmation prompt.
+
+**On conflict:** Prints step-by-step resolution guide. User resolves conflicts manually (`git add` + `git rebase --continue`). git rerere auto-resolves previously-seen conflicts.
+
+**On success:** Reports clean rebase, shows sync status.
+
+### pingo-light undo
+
+Undo the last sync operation by restoring the patches branch to its previous reflog state. Confirms before acting.
+
+### pingo-light status
+
+Comprehensive health check:
+- Shows upstream URL, branch, current branch
+- Fetches upstream and reports how many commits behind
+- Lists all patches with stats
+- **Conflict prediction**: detects files changed by both your patches and upstream, warns about potential conflicts before you sync
+- Shows rerere resolution count
+
+### pingo-light doctor
+
+Diagnostic check:
+- git version
+- rerere enabled/disabled
+- upstream remote configured
+- tracking and patches branches exist
+- Tests whether all patches apply cleanly on latest upstream (via temporary rebase)
+- Config file present
+
+### pingo-light diff
+
+Show combined diff of all patches vs upstream (what your fork changes overall).
+
+### pingo-light log
+
+Show sync history via tracking branch reflog (last 20 entries).
+
+### pingo-light auto-sync
+
+Interactive generator for GitHub Actions workflow. Produces `.github/workflows/pingo-light-sync.yml` that:
+- Runs on schedule (daily/6h/weekly, user chooses)
+- Fetches upstream and rebases patches
+- On success: force-pushes rebased branches
+- On conflict: creates a GitHub Issue with `pingo-light` and `sync-conflict` labels
+
+### pingo-light version
+
+Print version string.
+
+### pingo-light help
+
+Print usage summary with quick-start guide.
+
+## Config file: .pingolight
+
+Git-config format file in repo root. Sections:
+
+```ini
+[pingolight]
+    upstream-url = https://github.com/original/project.git
+    upstream-branch = main
+    patches-branch = pingo-patches
+    tracking-branch = upstream-tracking
+```
+
+## Branch conventions
+
+| Branch | Purpose | Who touches it |
+|--------|---------|----------------|
+| `upstream-tracking` | Exact mirror of upstream HEAD | Only pingo-light (via sync) |
+| `pingo-patches` | User's patch stack on top of tracking | User (via patch commands) + pingo-light (via sync rebase) |
+
+## Commit message format
+
+Patches are identified by commit message prefix:
+```
+[pl] <patch-name>: <description>
+```
+
+Example: `[pl] add-dark-mode: support dark color scheme`
+
+## Typical workflows
+
+### First-time setup
+```bash
+git clone https://github.com/YOU/forked-project.git
+cd forked-project
+pingo-light init https://github.com/ORIGINAL/project.git
+# make changes
+pingo-light patch new my-feature
+```
+
+### Daily sync
+```bash
+pingo-light status          # check drift
+pingo-light sync --dry-run  # preview
+pingo-light sync            # actual sync
+```
+
+### Conflict resolution
+```bash
+pingo-light sync
+# if conflict:
+#   1. edit conflicted files
+#   2. git add <files>
+#   3. git rebase --continue
+#   4. repeat until done
+# rerere remembers resolutions for next time
+```
+
+### Oops, sync broke things
+```bash
+pingo-light undo
+```
+
+### Share patches with team
+```bash
+pingo-light patch export ./patches
+# patches/ contains numbered .patch files + series file
+# teammate imports:
+pingo-light patch import ./patches
+```
+
+### Set up automation
+```bash
+pingo-light auto-sync
+# commit and push the generated .github/workflows/pingo-light-sync.yml
+```
+
+## Error handling
+
+| Error | Meaning | Resolution |
+|-------|---------|------------|
+| "Not a git repository" | Run inside a git repo | `cd` to your project |
+| "pingo-light not initialized" | No `.pingolight` config | Run `pingo-light init` |
+| "Working tree is dirty" | Uncommitted changes | Commit or stash first |
+| "Rebase conflict detected" | Upstream changes conflict with a patch | Follow printed guide: edit, `git add`, `git rebase --continue` |
+| "Failed to drop patch" | Other patches depend on it | Reorder patches first, or drop dependents |
+
+## Key behaviors
+
+- `sync --dry-run` never modifies any branch; uses temporary branches that are cleaned up
+- `doctor` tests patch integrity via temporary rebase, also cleaned up
+- rerere is enabled on `init` with `autoupdate=true`, so resolved conflicts are staged automatically on repeat
+- Patches can be referenced by 1-based index or by name (exact or partial match)
+- `auto-sync` generated workflow creates GitHub Issues on conflict, not silent failures
+
+## Limitations
+
+- Single-user tool (no multi-developer patch coordination)
+- Rebase-based: patches get new commit hashes on every sync (force-push required for remote)
+- Interactive reorder requires a terminal editor
+- No built-in support for nested/dependent patch chains (all patches are linear)

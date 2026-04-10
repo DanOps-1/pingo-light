@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# fork-pilot — Dead-simple fork maintenance for everyone.
-# https://github.com/user/fork-pilot
+# pingo-light — Dead-simple fork maintenance for everyone.
+# https://github.com/user/pingo-light
 #
 # Manages your customizations as a clean patch stack on top of upstream,
 # so syncing with upstream is always a one-command operation.
@@ -10,8 +10,8 @@
 set -euo pipefail
 
 VERSION="0.1.0"
-CONFIG_FILE=".forkpilot"
-PATCH_PREFIX="[fp]"
+CONFIG_FILE=".pingolight"
+PATCH_PREFIX="[pl]"
 
 # ─── Colors & Output ──────────────────────────────────────────────────────────
 
@@ -39,22 +39,22 @@ ensure_git_repo() {
 
 ensure_initialized() {
     ensure_git_repo
-    [[ -f "$CONFIG_FILE" ]] || fatal "fork-pilot not initialized. Run: ${BOLD}fork-pilot init <upstream-url>${RESET}"
+    [[ -f "$CONFIG_FILE" ]] || fatal "pingo-light not initialized. Run: ${BOLD}pingo-light init <upstream-url>${RESET}"
 }
 
 load_config() {
     ensure_initialized
-    UPSTREAM_URL=$(git config --file "$CONFIG_FILE" forkpilot.upstream-url 2>/dev/null || echo "")
-    UPSTREAM_BRANCH=$(git config --file "$CONFIG_FILE" forkpilot.upstream-branch 2>/dev/null || echo "main")
-    PATCHES_BRANCH=$(git config --file "$CONFIG_FILE" forkpilot.patches-branch 2>/dev/null || echo "fork-patches")
-    TRACKING_BRANCH=$(git config --file "$CONFIG_FILE" forkpilot.tracking-branch 2>/dev/null || echo "upstream-tracking")
+    UPSTREAM_URL=$(git config --file "$CONFIG_FILE" pingolight.upstream-url 2>/dev/null || echo "")
+    UPSTREAM_BRANCH=$(git config --file "$CONFIG_FILE" pingolight.upstream-branch 2>/dev/null || echo "main")
+    PATCHES_BRANCH=$(git config --file "$CONFIG_FILE" pingolight.patches-branch 2>/dev/null || echo "pingo-patches")
+    TRACKING_BRANCH=$(git config --file "$CONFIG_FILE" pingolight.tracking-branch 2>/dev/null || echo "upstream-tracking")
 }
 
 save_config() {
-    git config --file "$CONFIG_FILE" forkpilot.upstream-url "$UPSTREAM_URL"
-    git config --file "$CONFIG_FILE" forkpilot.upstream-branch "$UPSTREAM_BRANCH"
-    git config --file "$CONFIG_FILE" forkpilot.patches-branch "$PATCHES_BRANCH"
-    git config --file "$CONFIG_FILE" forkpilot.tracking-branch "$TRACKING_BRANCH"
+    git config --file "$CONFIG_FILE" pingolight.upstream-url "$UPSTREAM_URL"
+    git config --file "$CONFIG_FILE" pingolight.upstream-branch "$UPSTREAM_BRANCH"
+    git config --file "$CONFIG_FILE" pingolight.patches-branch "$PATCHES_BRANCH"
+    git config --file "$CONFIG_FILE" pingolight.tracking-branch "$TRACKING_BRANCH"
 }
 
 current_branch() {
@@ -85,16 +85,16 @@ cmd_init() {
     local upstream_branch="${2:-}"
 
     if [[ -z "$upstream_url" ]]; then
-        echo -e "${BOLD}Usage:${RESET} fork-pilot init <upstream-url> [upstream-branch]"
+        echo -e "${BOLD}Usage:${RESET} pingo-light init <upstream-url> [upstream-branch]"
         echo ""
-        echo "  Initialize fork-pilot in the current git repository."
+        echo "  Initialize pingo-light in the current git repository."
         echo ""
         echo "  upstream-url       URL of the original upstream repository"
         echo "  upstream-branch    Branch to track (default: auto-detect, fallback: main)"
         echo ""
         echo -e "${DIM}Example:${RESET}"
-        echo "  fork-pilot init https://github.com/original/project.git"
-        echo "  fork-pilot init https://github.com/original/project.git develop"
+        echo "  pingo-light init https://github.com/original/project.git"
+        echo "  pingo-light init https://github.com/original/project.git develop"
         return 1
     fi
 
@@ -102,13 +102,13 @@ cmd_init() {
 
     # Check if already initialized
     if [[ -f "$CONFIG_FILE" ]]; then
-        warn "fork-pilot is already initialized in this repo."
+        warn "pingo-light is already initialized in this repo."
         echo -n "  Re-initialize? [y/N] "
         read -r answer
         [[ "$answer" =~ ^[Yy] ]] || return 0
     fi
 
-    header "Initializing fork-pilot..."
+    header "Initializing pingo-light..."
 
     # 1. Add upstream remote
     if git remote get-url upstream &>/dev/null; then
@@ -152,7 +152,7 @@ cmd_init() {
     # 4. Set config
     UPSTREAM_URL="$upstream_url"
     UPSTREAM_BRANCH="$upstream_branch"
-    PATCHES_BRANCH="fork-patches"
+    PATCHES_BRANCH="pingo-patches"
     TRACKING_BRANCH="upstream-tracking"
 
     # 5. Enable rerere (remember conflict resolutions)
@@ -203,16 +203,16 @@ cmd_init() {
     fi
 
     echo ""
-    success "fork-pilot initialized!"
+    success "pingo-light initialized!"
     echo ""
     echo -e "  ${DIM}Upstream :${RESET} $UPSTREAM_URL ($UPSTREAM_BRANCH)"
     echo -e "  ${DIM}Tracking :${RESET} $TRACKING_BRANCH (mirrors upstream, don't touch)"
     echo -e "  ${DIM}Patches  :${RESET} $PATCHES_BRANCH (your customizations go here)"
     echo ""
     echo -e "  ${BOLD}Next steps:${RESET}"
-    echo -e "  1. Make your changes, then: ${CYAN}fork-pilot patch new <name>${RESET}"
-    echo -e "  2. To sync with upstream:   ${CYAN}fork-pilot sync${RESET}"
-    echo -e "  3. To check health:         ${CYAN}fork-pilot status${RESET}"
+    echo -e "  1. Make your changes, then: ${CYAN}pingo-light patch new <name>${RESET}"
+    echo -e "  2. To sync with upstream:   ${CYAN}pingo-light sync${RESET}"
+    echo -e "  3. To check health:         ${CYAN}pingo-light status${RESET}"
 }
 
 # ─── Command: patch ───────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ cmd_patch() {
         show)            patch_show "$@" ;;
         reorder)         patch_reorder "$@" ;;
         *)
-            echo -e "${BOLD}Usage:${RESET} fork-pilot patch <command>"
+            echo -e "${BOLD}Usage:${RESET} pingo-light patch <command>"
             echo ""
             echo "Commands:"
             echo -e "  ${CYAN}new${RESET} <name>          Create a new patch from staged/unstaged changes"
@@ -244,9 +244,9 @@ cmd_patch() {
             echo -e "  ${CYAN}reorder${RESET}             Interactively reorder patches"
             echo ""
             echo -e "${DIM}Example:${RESET}"
-            echo "  fork-pilot patch new add-custom-auth"
-            echo "  fork-pilot patch list"
-            echo "  fork-pilot patch export ./my-patches/"
+            echo "  pingo-light patch new add-custom-auth"
+            echo "  pingo-light patch list"
+            echo "  pingo-light patch export ./my-patches/"
             return 1
             ;;
     esac
@@ -257,14 +257,14 @@ patch_new() {
     local name="${1:-}"
 
     if [[ -z "$name" ]]; then
-        echo -e "${BOLD}Usage:${RESET} fork-pilot patch new <name>"
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch new <name>"
         echo ""
         echo "  Create a new patch. If you have staged changes, they become the patch."
         echo "  If nothing is staged, ALL unstaged changes are included."
         echo ""
         echo -e "${DIM}Examples:${RESET}"
-        echo "  fork-pilot patch new fix-login-bug"
-        echo "  fork-pilot patch new add-dark-mode"
+        echo "  pingo-light patch new fix-login-bug"
+        echo "  pingo-light patch new add-dark-mode"
         return 1
     fi
 
@@ -333,7 +333,7 @@ patch_list() {
 
     local base
     base=$(patches_base) || {
-        info "No patches yet. Create one with: ${CYAN}fork-pilot patch new <name>${RESET}"
+        info "No patches yet. Create one with: ${CYAN}pingo-light patch new <name>${RESET}"
         return 0
     }
 
@@ -341,7 +341,7 @@ patch_list() {
     commits=$(git rev-list --reverse "$base..$PATCHES_BRANCH" 2>/dev/null)
 
     if [[ -z "$commits" ]]; then
-        info "No patches yet. Create one with: ${CYAN}fork-pilot patch new <name>${RESET}"
+        info "No patches yet. Create one with: ${CYAN}pingo-light patch new <name>${RESET}"
         return 0
     fi
 
@@ -401,7 +401,7 @@ patch_list() {
 
     echo ""
     dim "  Total: $total patch(es)"
-    dim "  Use 'fork-pilot patch list -v' for file details"
+    dim "  Use 'pingo-light patch list -v' for file details"
 }
 
 patch_show() {
@@ -409,7 +409,7 @@ patch_show() {
     local target="${1:-}"
 
     if [[ -z "$target" ]]; then
-        echo -e "${BOLD}Usage:${RESET} fork-pilot patch show <name|index>"
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch show <name|index>"
         return 1
     fi
 
@@ -424,10 +424,10 @@ patch_drop() {
     local target="${1:-}"
 
     if [[ -z "$target" ]]; then
-        echo -e "${BOLD}Usage:${RESET} fork-pilot patch drop <name|index>"
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch drop <name|index>"
         echo ""
         echo "  Remove a patch from the stack."
-        echo "  Use 'fork-pilot patch list' to see available patches."
+        echo "  Use 'pingo-light patch list' to see available patches."
         return 1
     fi
 
@@ -461,7 +461,7 @@ patch_edit() {
     local target="${1:-}"
 
     if [[ -z "$target" ]]; then
-        echo -e "${BOLD}Usage:${RESET} fork-pilot patch edit <name|index>"
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch edit <name|index>"
         echo ""
         echo "  Stage your changes, then run this to fold them into an existing patch."
         return 1
@@ -537,7 +537,7 @@ patch_import() {
     local patch_file="${1:-}"
 
     if [[ -z "$patch_file" ]]; then
-        echo -e "${BOLD}Usage:${RESET} fork-pilot patch import <file.patch>"
+        echo -e "${BOLD}Usage:${RESET} pingo-light patch import <file.patch>"
         echo ""
         echo "  Import a .patch file (or directory of patches) into the stack."
         return 1
@@ -654,7 +654,7 @@ resolve_patch() {
         fi
     done <<< "$commits"
 
-    error "Patch '${target}' not found. Use 'fork-pilot patch list' to see available patches."
+    error "Patch '${target}' not found. Use 'pingo-light patch list' to see available patches."
     return 1
 }
 
@@ -671,7 +671,7 @@ cmd_sync() {
             --dry-run|-n) dry_run=true ;;
             --force|-f)   force=true ;;
             --help|-h)
-                echo -e "${BOLD}Usage:${RESET} fork-pilot sync [options]"
+                echo -e "${BOLD}Usage:${RESET} pingo-light sync [options]"
                 echo ""
                 echo "Options:"
                 echo "  --dry-run, -n   Preview what would happen without making changes"
@@ -720,11 +720,11 @@ cmd_sync() {
         echo ""
 
         # Create a temporary branch to test
-        local tmp_branch="fp-dryrun-$$"
+        local tmp_branch="pl-dryrun-$$"
         git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
 
         # Update tracking to test against
-        local tmp_tracking="fp-dryrun-tracking-$$"
+        local tmp_tracking="pl-dryrun-tracking-$$"
         git branch "$tmp_tracking" "upstream/$UPSTREAM_BRANCH" 2>/dev/null
 
         if git rebase --onto "$tmp_tracking" "$TRACKING_BRANCH" "$tmp_branch" 2>/dev/null; then
@@ -813,7 +813,7 @@ cmd_sync() {
 cmd_status() {
     load_config
 
-    header "fork-pilot status"
+    header "pingo-light status"
     echo ""
 
     # Upstream info
@@ -888,7 +888,7 @@ cmd_status() {
                     echo -e "    ${YELLOW}${f}${RESET}"
                 done
                 echo ""
-                echo -e "  ${DIM}Run 'fork-pilot sync --dry-run' to test before syncing.${RESET}"
+                echo -e "  ${DIM}Run 'pingo-light sync --dry-run' to test before syncing.${RESET}"
                 echo ""
             else
                 echo -e "  ${GREEN}No overlap${RESET} between your patches and upstream changes."
@@ -911,7 +911,7 @@ cmd_status() {
 cmd_doctor() {
     load_config
 
-    header "fork-pilot doctor"
+    header "pingo-light doctor"
     echo ""
 
     local issues=0
@@ -972,7 +972,7 @@ cmd_doctor() {
             success "No patches to test."
         else
             # Quick test: try rebase on a temp branch
-            local tmp_branch="fp-doctor-$$"
+            local tmp_branch="pl-doctor-$$"
             git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
 
             local current_tracking
@@ -1013,7 +1013,7 @@ cmd_autosync() {
     load_config
 
     local output_dir=".github/workflows"
-    local output_file="$output_dir/fork-pilot-sync.yml"
+    local output_file="$output_dir/pingo-light-sync.yml"
 
     header "Generate GitHub Actions auto-sync workflow"
     echo ""
@@ -1037,11 +1037,11 @@ cmd_autosync() {
     mkdir -p "$output_dir"
 
     cat > "$output_file" << 'WORKFLOW_EOF'
-# Generated by fork-pilot
+# Generated by pingo-light
 # Automatically syncs your fork with upstream and rebases patches.
 # On failure, creates a GitHub Issue to notify you.
 
-name: Fork Pilot Auto-Sync
+name: Pingo Light Auto-Sync
 
 on:
   schedule:
@@ -1064,8 +1064,8 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config user.name "fork-pilot[bot]"
-          git config user.email "fork-pilot[bot]@users.noreply.github.com"
+          git config user.name "pingo-light[bot]"
+          git config user.email "pingo-light[bot]@users.noreply.github.com"
 
       - name: Fetch upstream
         run: |
@@ -1100,14 +1100,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const title = `[fork-pilot] Sync conflict detected (${new Date().toISOString().split('T')[0]})`;
-            const body = `## Auto-sync failed\n\nUpstream has changes that conflict with your patches.\n\n**Action required:** Run \`fork-pilot sync\` locally to resolve conflicts.\n\n---\n*This issue was created automatically by fork-pilot.*`;
+            const title = `[pingo-light] Sync conflict detected (${new Date().toISOString().split('T')[0]})`;
+            const body = `## Auto-sync failed\n\nUpstream has changes that conflict with your patches.\n\n**Action required:** Run \`pingo-light sync\` locally to resolve conflicts.\n\n---\n*This issue was created automatically by pingo-light.*`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title,
               body,
-              labels: ['fork-pilot', 'sync-conflict']
+              labels: ['pingo-light', 'sync-conflict']
             });
 WORKFLOW_EOF
 
@@ -1205,13 +1205,13 @@ cmd_diff() {
 show_help() {
     cat << 'EOF'
 
-  fork-pilot — Dead-simple fork maintenance for everyone.
+  pingo-light — Dead-simple fork maintenance for everyone.
 
   Manages your customizations as a clean patch stack on top of upstream,
   so syncing with upstream is always a one-command operation.
 
 EOF
-    echo -e "  ${BOLD}Usage:${RESET} fork-pilot <command> [options]"
+    echo -e "  ${BOLD}Usage:${RESET} pingo-light <command> [options]"
     echo ""
     echo -e "  ${BOLD}Setup:${RESET}"
     echo -e "    ${CYAN}init${RESET} <upstream-url> [branch]   Initialize fork tracking"
@@ -1245,15 +1245,15 @@ EOF
     echo -e "    git clone https://github.com/YOU/project.git"
     echo -e "    cd project"
     echo ""
-    echo -e "    ${DIM}# 2. Initialize fork-pilot${RESET}"
-    echo -e "    fork-pilot init https://github.com/ORIGINAL/project.git"
+    echo -e "    ${DIM}# 2. Initialize pingo-light${RESET}"
+    echo -e "    pingo-light init https://github.com/ORIGINAL/project.git"
     echo ""
     echo -e "    ${DIM}# 3. Make changes and create patches${RESET}"
     echo -e "    vim src/feature.py"
-    echo -e "    fork-pilot patch new my-custom-feature"
+    echo -e "    pingo-light patch new my-custom-feature"
     echo ""
     echo -e "    ${DIM}# 4. Later, sync with upstream${RESET}"
-    echo -e "    fork-pilot sync"
+    echo -e "    pingo-light sync"
     echo ""
     echo -e "  ${DIM}Version $VERSION${RESET}"
 }
@@ -1272,9 +1272,9 @@ main() {
         log)        cmd_log "$@" ;;
         undo)       cmd_undo "$@" ;;
         diff|d)     cmd_diff "$@" ;;
-        version|-v|--version) echo "fork-pilot $VERSION" ;;
+        version|-v|--version) echo "pingo-light $VERSION" ;;
         help|-h|--help|"")    show_help ;;
-        *)          fatal "Unknown command: $cmd. Run 'fork-pilot --help' for usage." ;;
+        *)          fatal "Unknown command: $cmd. Run 'pingo-light --help' for usage." ;;
     esac
 }
 
