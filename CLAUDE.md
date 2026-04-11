@@ -88,6 +88,6 @@ All tools require `cwd` parameter.
 ## Development
 
 ```bash
-make test    # run 71 tests
+make test    # run test suite
 make lint    # shellcheck
 ```
