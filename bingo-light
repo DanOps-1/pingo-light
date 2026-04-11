@@ -381,8 +381,14 @@ patch_new() {
 
     # Prompt for description (skip in non-interactive mode)
     local description=""
-    if [[ "$YES_MODE" == true ]]; then
-        description="${BINGO_DESCRIPTION:-no description}"
+    if [[ -n "${BINGO_DESCRIPTION:-}" ]]; then
+        description="$BINGO_DESCRIPTION"
+    elif [[ "$YES_MODE" == true ]]; then
+        # In non-interactive mode, try reading one line from stdin (pipe)
+        if [[ ! -t 0 ]]; then
+            IFS= read -r description 2>/dev/null || true
+        fi
+        description="${description:-no description}"
     else
         echo -n "  Brief description (optional, Enter to skip): "
         read -r description
@@ -1516,7 +1522,7 @@ cmd_conflict_analyze() {
 
             # Extract conflict sections
             local ours theirs
-            ours=$(sed -n '/^<<<<<<</,/^=======/{ /^<<<<<<</d; /^=======/d; p; }' "$file" | json_escape)
+            ours=$(sed -n '/^<<<<<<</,/^=======/{ /^<<<<<<</d; /^=======/d; p; }' "$file" | sed '/^|||||||/,$d' | json_escape)
             theirs=$(sed -n '/^=======/,/^>>>>>>>/{ /^=======/d; /^>>>>>>>/d; p; }' "$file" | json_escape)
             local conflict_count
             conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
@@ -1730,11 +1736,12 @@ cmd_patch_meta() {
     local action="" value=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --set-reason)       action="reason"; value="$2"; shift 2 ;;
-            --set-tag)          action="tag"; value="$2"; shift 2 ;;
-            --set-expires)      action="expires"; value="$2"; shift 2 ;;
-            --set-upstream-pr)  action="upstream_pr"; value="$2"; shift 2 ;;
-            --set-status)       action="status"; value="$2"; shift 2 ;;
+            --set-reason|reason)              action="reason"; value="${2:-}"; shift 2 ;;
+            --set-tag|tag)                    action="tag"; value="${2:-}"; shift 2 ;;
+            --set-expires|expires)            action="expires"; value="${2:-}"; shift 2 ;;
+            --set-upstream-pr|upstream_pr|upstream-pr) action="upstream_pr"; value="${2:-}"; shift 2 ;;
+            --set-status)                     action="status"; value="${2:-}"; shift 2 ;;
+            --json) shift ;;
             *) shift ;;
         esac
     done

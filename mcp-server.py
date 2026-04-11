@@ -404,10 +404,18 @@ TOOLS = [
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
 
-def run_bl(args: list[str], cwd: str, input_text: str = "") -> dict:
+def run_bl(args: list[str], cwd: str, input_text: str = "", env_extra: dict = None) -> dict:
     """Run bingo-light CLI and return structured result."""
     env = os.environ.copy()
     env["NO_COLOR"] = "1"  # Disable ANSI colors for machine-readable output
+    if env_extra:
+        env.update(env_extra)
+
+    # Ensure JSON + non-interactive mode for all MCP calls
+    if "--json" not in args:
+        args = args + ["--json"]
+    if "--yes" not in args:
+        args = args + ["--yes"]
 
     try:
         result = subprocess.run(
@@ -443,17 +451,18 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     cwd = arguments.get("cwd", ".")
 
     if name == "bingo_status":
-        return run_bl(["status", "--json"], cwd)
+        return run_bl(["status"], cwd)
 
     elif name == "bingo_init":
         args = ["init", arguments["upstream_url"]]
         if arguments.get("branch"):
             args.append(arguments["branch"])
-        return run_bl(args, cwd, input_text="\n")  # Accept defaults
+        return run_bl(args, cwd)
 
     elif name == "bingo_patch_new":
         desc = arguments.get("description", "no description")
-        return run_bl(["patch", "new", arguments["name"]], cwd, input_text=f"{desc}\n")
+        env_extra = {"BINGO_DESCRIPTION": desc}
+        return run_bl(["patch", "new", arguments["name"]], cwd, env_extra=env_extra)
 
     elif name == "bingo_patch_list":
         args = ["patch", "list"]
@@ -465,7 +474,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_bl(["patch", "show", arguments["target"]], cwd)
 
     elif name == "bingo_patch_drop":
-        return run_bl(["patch", "drop", arguments["target"]], cwd, input_text="y\n")
+        return run_bl(["patch", "drop", arguments["target"]], cwd)
 
     elif name == "bingo_patch_export":
         args = ["patch", "export"]
@@ -483,7 +492,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_bl(args, cwd)
 
     elif name == "bingo_undo":
-        return run_bl(["undo"], cwd, input_text="y\n")
+        return run_bl(["undo"], cwd)
 
     elif name == "bingo_doctor":
         return run_bl(["doctor"], cwd)
@@ -497,7 +506,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_bl(["auto-sync"], cwd, input_text=f"{choice}\n")
 
     elif name == "bingo_conflict_analyze":
-        return run_bl(["conflict-analyze", "--json"], cwd)
+        return run_bl(["conflict-analyze"], cwd)
 
     elif name == "bingo_conflict_resolve":
         from pathlib import Path as _P

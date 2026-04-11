@@ -11,25 +11,32 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - .github/ISSUE_TEMPLATE/config.yml with discussion links
 - .github/FUNDING.yml for GitHub Sponsors
 - FAQ section in README (7 common questions)
+- Comparison table vs git rebase / quilt / stacked diffs
+- Animated terminal demo SVG (docs/demo.svg)
+- Separate README.zh-CN.md (full Chinese README with language switcher)
 - ShellCheck job in CI pipeline (separate from tests)
+- GitHub Discussions enabled
+- Release assets (bingo-light, mcp-server.py, install.sh)
 
 ### Fixed
+- `patch new`: piped descriptions now work (`echo "desc" | bingo-light patch new name`)
+- `patch meta`: positional args now work (`patch meta name reason "value"`, not just `--set-reason`)
+- `conflict-analyze --json`: diff3 base section no longer leaks into `ours` field
+- MCP server: all 22 tools now return `--json --yes` output (was human text for most commands)
+- MCP server: `patch_new` uses `BINGO_DESCRIPTION` env var instead of fragile stdin piping
 - All remaining `pingo` references renamed to `bingo` across codebase
 - 12 Python injection vulnerabilities: all `python3 -c` calls now pass data via stdin
-- LICENSE copyright: `pingo-light` → `bingo-light`
-- contrib/hooks: all three hooks updated from `pingo-light` to `bingo-light`
-- PINGO_WEBHOOK_URL → BINGO_WEBHOOK_URL in generic webhook hook
-- Internal variable names: PINGO → BL, run_pingo → run_bl in mcp-server.py, agent.py, tui.py, tests
-- MCP tool count: README and CLAUDE.md now correctly say 22 (was 15)
-- Sync history uses atomic writes (tempfile + os.replace)
+- LICENSE, contrib/hooks, issue templates: naming consistency
+- Internal variables: PINGO → BL, run_pingo → run_bl
+- Sync history uses atomic writes
 
 ### Changed
-- README: complete overhaul matching top-project standards (TOC, demo output, FAQ, feature tables, centered header)
+- README: complete overhaul (TOC, demo SVG, FAQ, feature tables, comparison, centered header)
+- i18n: English and Chinese READMEs fully separated with language switcher
 - CI: split into Tests + ShellCheck jobs with explicit permissions
 - CONTRIBUTING.md: expanded with project structure, commit conventions, test patterns
-- SECURITY.md: updated to reflect actual security measures (pathlib, stdin-only python)
+- SECURITY.md: updated to reflect actual security measures
 - PR template: added python3 injection check to checklist
-- Issue templates: improved with version hint comments
 
 ## [1.0.0] - 2026-04-10
 

@@ -16,6 +16,7 @@
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
   <a href="#mcp-服务器"><img src="https://img.shields.io/badge/MCP-22_tools-blueviolet.svg" alt="MCP: 22 tools"></a>
   <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/Made_with-Bash-1f425f.svg" alt="Bash"></a>
+  <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
   <br><br>
 </p>
 
