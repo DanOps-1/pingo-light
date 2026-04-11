@@ -1,217 +1,368 @@
 #!/usr/bin/env bash
-# bingo-light installer — interactive setup wizard
+# bingo-light — interactive setup wizard
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ─── Colors ───────────────────────────────────────────────────────────────────
+# ─── Terminal Control ─────────────────────────────────────────────────────────
 
-if [[ -t 1 ]]; then
-    RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[0;33m'
-    BLUE='\033[0;34m' CYAN='\033[0;36m' BOLD='\033[1m' DIM='\033[2m' RESET='\033[0m'
-else
-    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' DIM='' RESET=''
-fi
+ESC=$'\033'
+HIDE_CURSOR="${ESC}[?25l"
+SHOW_CURSOR="${ESC}[?25h"
+CLEAR_LINE="${ESC}[2K"
+MOVE_UP="${ESC}[1A"
+SAVE_POS="${ESC}[s"
+RESTORE_POS="${ESC}[u"
 
-info()    { echo -e "${BLUE}>${RESET} $*"; }
-success() { echo -e "${GREEN}OK${RESET} $*"; }
-warn()    { echo -e "${YELLOW}!${RESET} $*"; }
+# Colors (soft palette)
+C_BG="${ESC}[48;5;235m"
+C_FG="${ESC}[38;5;252m"
+C_ACCENT="${ESC}[38;5;75m"    # soft blue
+C_SUCCESS="${ESC}[38;5;114m"  # soft green
+C_WARN="${ESC}[38;5;221m"     # soft yellow
+C_DIM="${ESC}[38;5;242m"
+C_BOLD="${ESC}[1m"
+C_RESET="${ESC}[0m"
+C_WHITE="${ESC}[38;5;255m"
 
-ask() {
+trap 'printf "%s" "$SHOW_CURSOR"' EXIT
+printf "%s" "$HIDE_CURSOR"
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+clear_screen() { printf "${ESC}[2J${ESC}[H"; }
+
+# Print centered text
+center() {
+    local text="$1" color="${2:-$C_FG}"
+    local cols
+    cols=$(tput cols 2>/dev/null || echo 80)
+    local stripped
+    stripped=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local pad=$(( (cols - ${#stripped}) / 2 ))
+    [[ "$pad" -lt 0 ]] && pad=0
+    printf "%${pad}s${color}%s${C_RESET}\n" "" "$text"
+}
+
+# Animated typing effect
+type_text() {
+    local text="$1" color="${2:-$C_FG}" delay="${3:-0.02}"
+    printf "%s" "$color"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep "$delay"
+    done
+    printf "%s\n" "$C_RESET"
+}
+
+# Spinner animation
+spin() {
+    local pid=$1 msg="${2:-Working...}"
+    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local i=0
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r  ${C_ACCENT}${frames[$i]}${C_RESET} ${C_DIM}%s${C_RESET}" "$msg"
+        i=$(( (i + 1) % ${#frames[@]} ))
+        sleep 0.08
+    done
+    wait "$pid" 2>/dev/null
+    local code=$?
+    printf "\r${CLEAR_LINE}"
+    return $code
+}
+
+# Step indicator: ● ● ○ ○
+progress_dots() {
+    local current=$1 total=$2
+    local dots=""
+    for ((i=1; i<=total; i++)); do
+        if [[ $i -le $current ]]; then
+            dots+="${C_ACCENT}●${C_RESET} "
+        else
+            dots+="${C_DIM}○${C_RESET} "
+        fi
+    done
+    center "$dots"
+}
+
+# Ask with styled prompt
+ask_styled() {
     local prompt="$1" default="${2:-y}"
-    echo -ne "  $prompt "
+    printf "\n  ${C_WHITE}%s${C_RESET} " "$prompt"
+    printf "%s" "$SHOW_CURSOR"
     read -r answer
+    printf "%s" "$HIDE_CURSOR"
     answer="${answer:-$default}"
     [[ "$answer" =~ ^[Yy] ]]
 }
 
-# ─── Header ───────────────────────────────────────────────────────────────────
+# Result line
+ok()   { printf "  ${C_SUCCESS}✓${C_RESET} %s\n" "$1"; }
+skip() { printf "  ${C_DIM}⊘ %s${C_RESET}\n" "$1"; }
+fail() { printf "  ${C_WARN}✗${C_RESET} %s\n" "$1"; }
 
-echo ""
-echo -e "${BOLD}  bingo-light installer${RESET}"
-echo -e "${DIM}  AI-native fork maintenance tool${RESET}"
-echo ""
-echo "  This will set up:"
-echo -e "  ${CYAN}1${RESET} CLI tool         (bingo-light command)"
-echo -e "  ${CYAN}2${RESET} Shell completions (tab completion for bash/zsh/fish)"
-echo -e "  ${CYAN}3${RESET} MCP server        (AI tool integration for Claude Code, Cursor, etc.)"
-echo -e "  ${CYAN}4${RESET} AI skill          (/bingo slash command for Claude Code)"
-echo ""
+# Box drawing
+box_top()    { printf "  ${C_DIM}╭─────────────────────────────────────────────────╮${C_RESET}\n"; }
+box_bottom() { printf "  ${C_DIM}╰─────────────────────────────────────────────────╯${C_RESET}\n"; }
+box_line()   { printf "  ${C_DIM}│${C_RESET} %-47s ${C_DIM}│${C_RESET}\n" "$1"; }
+box_empty()  { printf "  ${C_DIM}│${C_RESET}                                                 ${C_DIM}│${C_RESET}\n"; }
 
-# ─── Step 1: CLI ──────────────────────────────────────────────────────────────
+# ─── Splash Screen ────────────────────────────────────────────────────────────
 
-echo -e "${BOLD}Step 1: Install CLI${RESET}"
+splash() {
+    clear_screen
+    echo ""
+    echo ""
 
-INSTALL_DIR="/usr/local/bin"
-if [[ ! -w "$INSTALL_DIR" ]]; then
-    info "Installing bingo-light to $INSTALL_DIR (requires sudo)..."
-    sudo install -m 755 "$SCRIPT_DIR/bingo-light" "$INSTALL_DIR/bingo-light"
-else
-    install -m 755 "$SCRIPT_DIR/bingo-light" "$INSTALL_DIR/bingo-light"
-fi
-success "bingo-light installed to $INSTALL_DIR/bingo-light"
-echo ""
+    local logo=(
+        "  _     _                         _ _       _     _   "
+        " | |   (_)_ __   __ _  ___       | (_) __ _| |__ | |_ "
+        " | |__ | | '_ \\ / _\` |/ _ \\ ____| | |/ _\` | '_ \\| __|"
+        " | '_ \\| | | | | (_| | (_) |____| | | (_| | | | | |_ "
+        " |_.__/|_|_| |_|\\__, |\\___/     |_|_|\\__, |_| |_|\\__|"
+        "                |___/                 |___/            "
+    )
 
-# ─── Step 2: Shell Completions ────────────────────────────────────────────────
+    for line in "${logo[@]}"; do
+        center "$line" "$C_ACCENT"
+        sleep 0.05
+    done
 
-echo -e "${BOLD}Step 2: Shell Completions${RESET}"
+    echo ""
+    center "AI-native fork maintenance" "$C_DIM"
+    echo ""
+    sleep 0.3
 
-SHELL_NAME=$(basename "${SHELL:-/bin/bash}")
-case "$SHELL_NAME" in
-    bash)
-        COMP_DIR="${BASH_COMPLETION_USER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions}"
-        mkdir -p "$COMP_DIR"
-        cp "$SCRIPT_DIR/completions/bingo-light.bash" "$COMP_DIR/bingo-light"
-        success "Bash completions installed to $COMP_DIR/bingo-light"
-        ;;
-    zsh)
-        COMP_DIR="${HOME}/.zfunc"
-        mkdir -p "$COMP_DIR"
-        cp "$SCRIPT_DIR/completions/bingo-light.zsh" "$COMP_DIR/_bingo-light"
-        # Ensure .zfunc is in fpath
-        if ! grep -q '.zfunc' ~/.zshrc 2>/dev/null; then
-            echo 'fpath=(~/.zfunc $fpath)' >> ~/.zshrc
-            echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
-            info "Added ~/.zfunc to fpath in ~/.zshrc"
-        fi
-        success "Zsh completions installed to $COMP_DIR/_bingo-light"
-        ;;
-    fish)
-        COMP_DIR="${HOME}/.config/fish/completions"
-        mkdir -p "$COMP_DIR"
-        cp "$SCRIPT_DIR/completions/bingo-light.fish" "$COMP_DIR/bingo-light.fish"
-        success "Fish completions installed to $COMP_DIR/bingo-light.fish"
-        ;;
-    *)
-        warn "Unknown shell '$SHELL_NAME', skipping completions."
-        ;;
-esac
-echo ""
+    center "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_DIM"
+    echo ""
+    sleep 0.2
+}
 
-# ─── Step 3: MCP Server ──────────────────────────────────────────────────────
+# ─── Step Screens ─────────────────────────────────────────────────────────────
 
-echo -e "${BOLD}Step 3: MCP Server (AI Tool Integration)${RESET}"
-echo ""
-echo "  The MCP server lets AI assistants (Claude Code, Cursor, etc.)"
-echo "  call bingo-light commands directly as tools."
-echo ""
+step_cli() {
+    echo ""
+    progress_dots 1 4
+    echo ""
+    center "Step 1 of 4" "$C_DIM"
+    center "Install CLI" "${C_BOLD}${C_WHITE}"
+    echo ""
 
-MCP_CONFIGURED=false
+    box_top
+    box_line "Install bingo-light to /usr/local/bin"
+    box_line "This lets you run 'bingo-light' from anywhere."
+    box_empty
+    box_line "  ${C_DIM}$ bingo-light init <upstream-url>${C_RESET}"
+    box_line "  ${C_DIM}$ bingo-light sync${C_RESET}"
+    box_bottom
+    echo ""
 
-# Detect Claude Code
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-if command -v claude &>/dev/null || [[ -d "$HOME/.claude" ]]; then
-    if ask "Set up MCP for Claude Code? [Y/n]"; then
-        mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
-
-        MCP_ENTRY='"bingo-light":{"command":"python3","args":["'"$SCRIPT_DIR/mcp-server.py"'"]}'
-
-        if [[ -f "$CLAUDE_SETTINGS" ]]; then
-            # Check if already configured
-            if grep -q "bingo-light" "$CLAUDE_SETTINGS" 2>/dev/null; then
-                success "Already configured in $CLAUDE_SETTINGS"
-            else
-                # Add to existing mcpServers or create the section
-                python3 -c "
-import json, sys
-with open('$CLAUDE_SETTINGS') as f: data = json.load(f)
-servers = data.setdefault('mcpServers', {})
-servers['bingo-light'] = {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}
-with open('$CLAUDE_SETTINGS', 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && success "Added to $CLAUDE_SETTINGS" || warn "Could not update settings, add manually"
-            fi
+    (
+        if [[ ! -w "/usr/local/bin" ]]; then
+            sudo install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
         else
-            # Create new settings file
-            python3 -c "
-import json
-data = {'mcpServers': {'bingo-light': {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}}}
-with open('$CLAUDE_SETTINGS', 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && success "Created $CLAUDE_SETTINGS" || warn "Could not create settings"
+            install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
         fi
-        MCP_CONFIGURED=true
-    fi
-    echo ""
-fi
+    ) &
+    spin $! "Installing CLI..."
+    ok "bingo-light installed"
+    sleep 0.5
+}
 
-# Detect Claude Desktop (macOS)
-CLAUDE_DESKTOP_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-if [[ -d "$HOME/Library/Application Support/Claude" ]]; then
-    if ask "Set up MCP for Claude Desktop? [Y/n]"; then
-        if [[ -f "$CLAUDE_DESKTOP_CONFIG" ]]; then
-            if grep -q "bingo-light" "$CLAUDE_DESKTOP_CONFIG" 2>/dev/null; then
-                success "Already configured in Claude Desktop"
-            else
-                python3 -c "
-import json
-with open('$CLAUDE_DESKTOP_CONFIG') as f: data = json.load(f)
-servers = data.setdefault('mcpServers', {})
-servers['bingo-light'] = {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}
-with open('$CLAUDE_DESKTOP_CONFIG', 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && success "Added to Claude Desktop config" || warn "Could not update config"
+step_completions() {
+    clear_screen
+    echo ""
+    progress_dots 2 4
+    echo ""
+    center "Step 2 of 4" "$C_DIM"
+    center "Shell Completions" "${C_BOLD}${C_WHITE}"
+    echo ""
+
+    local shell_name
+    shell_name=$(basename "${SHELL:-/bin/bash}")
+
+    box_top
+    box_line "Detected shell: ${C_ACCENT}$shell_name${C_RESET}"
+    box_line "Tab completion for all commands and flags."
+    box_bottom
+    echo ""
+
+    case "$shell_name" in
+        bash)
+            local dir="${BASH_COMPLETION_USER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions}"
+            mkdir -p "$dir"
+            cp "$SCRIPT_DIR/completions/bingo-light.bash" "$dir/bingo-light"
+            ok "Bash completions → $dir"
+            ;;
+        zsh)
+            local dir="$HOME/.zfunc"
+            mkdir -p "$dir"
+            cp "$SCRIPT_DIR/completions/bingo-light.zsh" "$dir/_bingo-light"
+            if ! grep -q '.zfunc' ~/.zshrc 2>/dev/null; then
+                echo 'fpath=(~/.zfunc $fpath)' >> ~/.zshrc
+                echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
             fi
-        else
+            ok "Zsh completions → $dir"
+            ;;
+        fish)
+            local dir="$HOME/.config/fish/completions"
+            mkdir -p "$dir"
+            cp "$SCRIPT_DIR/completions/bingo-light.fish" "$dir/bingo-light.fish"
+            ok "Fish completions → $dir"
+            ;;
+        *)
+            skip "Unknown shell, skipped"
+            ;;
+    esac
+    sleep 0.5
+}
+
+step_mcp() {
+    clear_screen
+    echo ""
+    progress_dots 3 4
+    echo ""
+    center "Step 3 of 4" "$C_DIM"
+    center "MCP Server" "${C_BOLD}${C_WHITE}"
+    echo ""
+
+    box_top
+    box_line "Connect bingo-light to AI assistants."
+    box_line "22 tools for Claude Code, Cursor, etc."
+    box_empty
+    box_line "  ${C_DIM}AI calls bingo_sync(cwd=\"/repo\")${C_RESET}"
+    box_line "  ${C_DIM}→ patches rebased automatically${C_RESET}"
+    box_bottom
+    echo ""
+
+    local configured=false
+
+    # Claude Code
+    if [[ -d "$HOME/.claude" ]] || command -v claude &>/dev/null; then
+        if ask_styled "Configure for Claude Code? [Y/n]"; then
+            local cfg="$HOME/.claude/settings.json"
+            mkdir -p "$HOME/.claude"
             python3 -c "
-import json
-data = {'mcpServers': {'bingo-light': {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}}}
-with open('$CLAUDE_DESKTOP_CONFIG', 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && success "Created Claude Desktop config" || warn "Could not create config"
+import json, os
+path = '$cfg'
+data = {}
+if os.path.exists(path):
+    with open(path) as f: data = json.load(f)
+data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}
+with open(path, 'w') as f: json.dump(data, f, indent=2)
+" 2>/dev/null && ok "Claude Code configured" || fail "Could not write settings"
+            configured=true
+        else
+            skip "Claude Code skipped"
         fi
-        MCP_CONFIGURED=true
     fi
-    echo ""
-fi
 
-if [[ "$MCP_CONFIGURED" == false ]]; then
-    info "To set up MCP manually for other clients, add this to your MCP config:"
-    echo ""
-    echo -e "  ${DIM}{${RESET}"
-    echo -e "  ${DIM}  \"mcpServers\": {${RESET}"
-    echo -e "  ${DIM}    \"bingo-light\": {${RESET}"
-    echo -e "  ${DIM}      \"command\": \"python3\",${RESET}"
-    echo -e "  ${DIM}      \"args\": [\"$SCRIPT_DIR/mcp-server.py\"]${RESET}"
-    echo -e "  ${DIM}    }${RESET}"
-    echo -e "  ${DIM}  }${RESET}"
-    echo -e "  ${DIM}}${RESET}"
-    echo ""
-fi
-
-# ─── Step 4: AI Skill ────────────────────────────────────────────────────────
-
-echo -e "${BOLD}Step 4: AI Skill (/bingo slash command)${RESET}"
-echo ""
-echo "  The /bingo skill teaches AI how to use bingo-light CLI."
-echo "  When you type /bingo in Claude Code, the AI gets a full command reference."
-echo ""
-
-SKILL_SRC="$SCRIPT_DIR/.claude/commands/bingo.md"
-if [[ -f "$SKILL_SRC" ]]; then
-    # Global skill (works everywhere)
-    GLOBAL_CMD_DIR="$HOME/.claude/commands"
-    if ask "Install /bingo as global slash command? [Y/n]"; then
-        mkdir -p "$GLOBAL_CMD_DIR"
-        cp "$SKILL_SRC" "$GLOBAL_CMD_DIR/bingo.md"
-        success "Installed /bingo globally to $GLOBAL_CMD_DIR/bingo.md"
+    # Claude Desktop
+    local desktop_cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+    if [[ -d "$HOME/Library/Application Support/Claude" ]]; then
+        echo ""
+        if ask_styled "Configure for Claude Desktop? [Y/n]"; then
+            python3 -c "
+import json, os
+path = '''$desktop_cfg'''
+data = {}
+if os.path.exists(path):
+    with open(path) as f: data = json.load(f)
+data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}
+with open(path, 'w') as f: json.dump(data, f, indent=2)
+" 2>/dev/null && ok "Claude Desktop configured" || fail "Could not write config"
+            configured=true
+        else
+            skip "Claude Desktop skipped"
+        fi
     fi
-else
-    warn "Skill file not found at $SKILL_SRC"
-fi
-echo ""
 
-# ─── Summary ──────────────────────────────────────────────────────────────────
+    if [[ "$configured" == false ]]; then
+        echo ""
+        printf "  ${C_DIM}For other MCP clients, add to config:${C_RESET}\n"
+        echo ""
+        printf "  ${C_DIM}\"bingo-light\": {${C_RESET}\n"
+        printf "  ${C_DIM}  \"command\": \"python3\",${C_RESET}\n"
+        printf "  ${C_DIM}  \"args\": [\"%s/mcp-server.py\"]${C_RESET}\n" "$SCRIPT_DIR"
+        printf "  ${C_DIM}}${C_RESET}\n"
+    fi
+    sleep 0.5
+}
 
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "  ${GREEN}Installation complete!${RESET}"
-echo ""
-echo -e "  ${CYAN}CLI:${RESET}         bingo-light --help"
-echo -e "  ${CYAN}Completions:${RESET} restart your shell or source your rc file"
-echo -e "  ${CYAN}MCP:${RESET}         restart Claude Code / Claude Desktop to load"
-echo -e "  ${CYAN}Skill:${RESET}       type ${BOLD}/bingo${RESET} in Claude Code"
-echo ""
-echo -e "  ${BOLD}Quick start:${RESET}"
-echo -e "    cd your-forked-project"
-echo -e "    bingo-light init https://github.com/original/project.git"
-echo -e "    bingo-light patch new my-feature"
-echo -e "    bingo-light sync"
-echo ""
-echo -e "  ${DIM}Or just tell AI: /bingo${RESET}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+step_skill() {
+    clear_screen
+    echo ""
+    progress_dots 4 4
+    echo ""
+    center "Step 4 of 4" "$C_DIM"
+    center "AI Skill" "${C_BOLD}${C_WHITE}"
+    echo ""
+
+    box_top
+    box_line "The ${C_ACCENT}/bingo${C_RESET} slash command teaches AI"
+    box_line "how to use every bingo-light feature."
+    box_empty
+    box_line "  ${C_DIM}You type: /bingo${C_RESET}"
+    box_line "  ${C_DIM}AI gets: full command reference${C_RESET}"
+    box_bottom
+    echo ""
+
+    local src="$SCRIPT_DIR/.claude/commands/bingo.md"
+    if [[ -f "$src" ]]; then
+        if ask_styled "Install /bingo globally? [Y/n]"; then
+            mkdir -p "$HOME/.claude/commands"
+            cp "$src" "$HOME/.claude/commands/bingo.md"
+            ok "/bingo installed globally"
+        else
+            skip "/bingo skipped"
+        fi
+    else
+        skip "Skill file not found"
+    fi
+    sleep 0.5
+}
+
+# ─── Final Screen ─────────────────────────────────────────────────────────────
+
+finish() {
+    clear_screen
+    echo ""
+    echo ""
+
+    center "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_SUCCESS"
+    echo ""
+    center "Setup complete" "${C_BOLD}${C_SUCCESS}"
+    echo ""
+    center "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_SUCCESS"
+    echo ""
+    echo ""
+
+    box_top
+    box_line "${C_WHITE}Quick start:${C_RESET}"
+    box_empty
+    box_line "  ${C_ACCENT}cd${C_RESET} your-forked-project"
+    box_line "  ${C_ACCENT}bingo-light init${C_RESET} https://github.com/org/repo.git"
+    box_line "  ${C_ACCENT}bingo-light patch new${C_RESET} my-feature"
+    box_line "  ${C_ACCENT}bingo-light sync${C_RESET}"
+    box_empty
+    box_line "${C_WHITE}For AI:${C_RESET}"
+    box_empty
+    box_line "  Type ${C_ACCENT}/bingo${C_RESET} in Claude Code"
+    box_line "  Or let AI call MCP tools directly"
+    box_bottom
+    echo ""
+    echo ""
+    center "https://github.com/DanOps-1/bingo-light" "$C_DIM"
+    echo ""
+    echo ""
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+splash
+sleep 0.3
+step_cli
+step_completions
+step_mcp
+step_skill
+finish
