@@ -19,9 +19,12 @@ Usage:
   python3 agent.py --cwd /path/to/repo --watch --interval 6h  # periodic monitor
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -43,7 +46,12 @@ def run_bl(args: list[str], cwd: str) -> dict:
     """Run bingo-light with --json --yes and return parsed result."""
     cmd = [BINGO_BIN, "--json", "--yes"] + args
     env = {**os.environ, "NO_COLOR": "1"}
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=120, env=env)
+    try:
+        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=120, env=env)
+    except FileNotFoundError:
+        return {"ok": False, "error": "bingo-light not found"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "command timed out"}
     stdout = result.stdout.strip()
     if stdout:
         try:
@@ -169,7 +177,6 @@ def analyze_conflict_details(cwd: str) -> list[dict]:
             content = f.read()
 
         # Extract conflict regions via regex
-        import re
         regions = []
         for m in re.finditer(r'<<<<<<< [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*', content, re.DOTALL):
             regions.append({"ours": m.group(1).rstrip(), "theirs": m.group(2).rstrip()})

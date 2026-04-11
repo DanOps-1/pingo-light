@@ -76,20 +76,30 @@ complete -c bingo-light -n __bingo_light_needs_command -a undo    -d 'Undo the l
 complete -c bingo-light -n __bingo_light_needs_command -a diff    -d 'Show differences between states'
 complete -c bingo-light -n __bingo_light_needs_command -a version -d 'Print version information'
 complete -c bingo-light -n __bingo_light_needs_command -a help    -d 'Show help for a command'
+complete -c bingo-light -n __bingo_light_needs_command -a conflict-analyze -d 'Analyze conflicts during rebase'
+complete -c bingo-light -n __bingo_light_needs_command -a config  -d 'Get/set/list configuration'
+complete -c bingo-light -n __bingo_light_needs_command -a history -d 'Show sync history with hash mappings'
+complete -c bingo-light -n __bingo_light_needs_command -a test    -d 'Run configured test suite'
+complete -c bingo-light -n __bingo_light_needs_command -a workspace -d 'Manage multiple forks'
 
 # Short aliases
 complete -c bingo-light -n __bingo_light_needs_command -a p  -d 'Alias for patch'
 complete -c bingo-light -n __bingo_light_needs_command -a s  -d 'Alias for sync'
 complete -c bingo-light -n __bingo_light_needs_command -a st -d 'Alias for status'
 complete -c bingo-light -n __bingo_light_needs_command -a d  -d 'Alias for diff'
+complete -c bingo-light -n __bingo_light_needs_command -a ws -d 'Alias for workspace'
 
 # Global flags
 complete -c bingo-light -n __bingo_light_needs_command -s h -l help    -d 'Show help'
 complete -c bingo-light -n __bingo_light_needs_command      -l version -d 'Show version'
+complete -c bingo-light                                    -l json    -d 'Output structured JSON'
+complete -c bingo-light                                    -l yes     -d 'Non-interactive mode, auto-confirm prompts'
+complete -c bingo-light                               -s y            -d 'Non-interactive mode (short for --yes)'
 
 # ---- sync flags (also alias "s") ----
 complete -c bingo-light -n '__bingo_light_using_command sync s' -s n -l dry-run -d 'Show what would be done without making changes'
 complete -c bingo-light -n '__bingo_light_using_command sync s' -s f -l force   -d 'Force sync, overwriting conflicts'
+complete -c bingo-light -n '__bingo_light_using_command sync s' -s t -l test    -d 'Run test suite after sync'
 complete -c bingo-light -n '__bingo_light_using_command sync s' -s h -l help    -d 'Show help'
 
 # ---- status flags (also alias "st") ----
@@ -107,7 +117,7 @@ complete -c bingo-light -n '__bingo_light_using_command undo'      -s h -l help 
 complete -c bingo-light -n '__bingo_light_using_command version'   -s h -l help -d 'Show help'
 
 # ---- help: complete with command names ----
-complete -c bingo-light -n '__bingo_light_using_command help' -a 'init patch sync status doctor auto-sync log undo diff version' -d 'Command'
+complete -c bingo-light -n '__bingo_light_using_command help' -a 'init patch sync status doctor auto-sync log undo diff version conflict-analyze config history test workspace' -d 'Command'
 
 # ---- patch subcommands (also alias "p") ----
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a new     -d 'Create a new patch'
@@ -118,6 +128,8 @@ complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a drop    -d 'R
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a export  -d 'Export patches to files'
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a import  -d 'Import patches from files'
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a reorder -d 'Reorder the patch stack'
+complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a squash  -d 'Squash two patches into one'
+complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a meta    -d 'Get/set patch metadata'
 
 # Patch short aliases
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a ls     -d 'Alias for list'
@@ -141,3 +153,12 @@ complete -c bingo-light -n '__bingo_light_patch_using_subcommand drop rm remove'
 complete -c bingo-light -n '__bingo_light_patch_using_subcommand export'            -s h -l help -d 'Show help'
 complete -c bingo-light -n '__bingo_light_patch_using_subcommand import'            -s h -l help -d 'Show help'
 complete -c bingo-light -n '__bingo_light_patch_using_subcommand reorder'           -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_patch_using_subcommand squash'            -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_patch_using_subcommand meta'              -s h -l help -d 'Show help'
+
+# ---- New top-level command flags ----
+complete -c bingo-light -n '__bingo_light_using_command conflict-analyze' -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_using_command config'           -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_using_command history'          -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_using_command test'             -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_using_command workspace ws'     -s h -l help -d 'Show help'

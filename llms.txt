@@ -80,7 +80,7 @@ Remove a patch from the stack. Confirms before acting. Uses rebase internally, m
 
 ### bingo-light patch export [dir]
 
-Export all patches as numbered `.patch` files (git format-patch) plus a `series` file (quilt-compatible). Default output directory: `.pl-patches/`.
+Export all patches as numbered `.patch` files (git format-patch) plus a `series` file (quilt-compatible). Default output directory: `.bl-patches/`.
 
 ### bingo-light patch import <file|dir>
 
@@ -90,13 +90,14 @@ Import `.patch` file(s) into the stack via `git am`. If given a directory, reads
 
 Open interactive rebase editor to reorder, squash, or drop patches. Uses `$EDITOR` (default: vi).
 
-### bingo-light sync [--dry-run|-n] [--force|-f]
+### bingo-light sync [--dry-run|-n] [--force|-f] [--test|-t]
 
 Sync with upstream. Fetches upstream, updates tracking branch, rebases all patches onto new upstream HEAD.
 
 **Flags:**
 - `--dry-run` / `-n`: Test rebase on a temporary branch without modifying anything. Reports whether rebase would succeed and lists conflicted files if not.
 - `--force` / `-f`: Skip confirmation prompt.
+- `--test` / `-t`: Run configured test suite after successful sync; auto-undo if tests fail.
 
 **On conflict:** Prints step-by-step resolution guide. User resolves conflicts manually (`git add` + `git rebase --continue`). git rerere auto-resolves previously-seen conflicts.
 
@@ -140,6 +141,46 @@ Interactive generator for GitHub Actions workflow. Produces `.github/workflows/b
 - Fetches upstream and rebases patches
 - On success: force-pushes rebased branches
 - On conflict: creates a GitHub Issue with `bingo-light` and `sync-conflict` labels
+
+### bingo-light conflict-analyze
+
+Analyze conflicts during a paused rebase. Shows structured information about each conflicted file: ours (patch) content, theirs (upstream) content, and hints for resolution. Use `--json` for machine-readable output suitable for AI agents.
+
+### bingo-light config get|set|list
+
+Manage bingo-light configuration.
+
+- `config list`: show all configuration values
+- `config get <key>`: get a specific configuration value
+- `config set <key> <value>`: set a configuration value
+
+### bingo-light history
+
+Show sync history with detailed hash mappings. Each entry records the timestamp, upstream commit range integrated, and old-to-new patch hash mapping from the rebase. Stored in `.bingo/sync-history.json`.
+
+### bingo-light test
+
+Run the configured test suite. The test command is set via `config set test-command "<cmd>"`. Used by `sync --test` to validate patches after sync.
+
+### bingo-light workspace init|add|list|status|sync
+
+Manage multiple bingo-light forks from a single workspace.
+
+- `workspace init`: create a workspace configuration file
+- `workspace add <path>`: register a fork repository
+- `workspace list`: list all registered repos
+- `workspace status`: overview of all repos (behind count, patch count, conflict risk)
+- `workspace sync`: sync all repos that are safe (no predicted conflicts)
+
+Alias: `ws`.
+
+### bingo-light patch squash <patch1> <patch2>
+
+Squash two adjacent patches into one. The resulting patch keeps the name of the first patch. Patches must be adjacent in the stack.
+
+### bingo-light patch meta <name> [key] [value]
+
+Get or set patch metadata (reason, tags, expires, upstream_pr, status). Without key/value, shows all metadata for the patch. With key only, shows that value. With key and value, sets it.
 
 ### bingo-light version
 

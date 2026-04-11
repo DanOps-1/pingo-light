@@ -1,7 +1,7 @@
 class BingoLight < Formula
   desc "AI-native fork maintenance tool — manage patch stacks on top of upstream"
   homepage "https://github.com/DanOps-1/bingo-light"
-  url "https://github.com/DanOps-1/bingo-light/archive/refs/tags/v1.0.0.tar.gz"
+  url "https://github.com/DanOps-1/bingo-light/archive/refs/tags/v1.1.0.tar.gz"
   # sha256 "UPDATE_WITH_ACTUAL_SHA256"
   license "MIT"
 

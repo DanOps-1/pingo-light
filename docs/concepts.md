@@ -22,7 +22,7 @@ bingo-patches ------------ your customizations live here
 
 Each customization is one git commit with a `[bl]` prefix. Patches are ordered — bottom patches are applied first.
 
-Operations: `patch new`, `patch list`, `patch show`, `patch edit`, `patch drop`, `patch reorder`, `patch squash`, `patch export/import`.
+Operations: `patch new`, `patch list`, `patch show`, `patch edit`, `patch drop`, `patch reorder`, `patch squash`, `patch meta`, `patch export/import`.
 
 ## Sync Flow
 

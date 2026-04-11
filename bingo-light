@@ -89,7 +89,7 @@ ensure_git_repo() {
 
 # Run hooks: .bingo/hooks/<event> with JSON data on stdin
 run_hooks() {
-    local event="$1" data="${2:-{\}}"
+    local event="$1" data="${2:-'{}'}"
     local hook=".bingo/hooks/$event"
     if [[ -x "$hook" ]]; then
         echo "$data" | "$hook" 2>/dev/null || true
@@ -128,7 +128,7 @@ ensure_clean_tree() {
 
 count_patches() {
     local base
-    base=$(git merge-base "$TRACKING_BRANCH" "$PATCHES_BRANCH" 2>/dev/null) || return 0
+    base=$(git merge-base "$TRACKING_BRANCH" "$PATCHES_BRANCH" 2>/dev/null) || { echo 0; return 0; }
     git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0
 }
 
@@ -178,7 +178,7 @@ cmd_init() {
 
     # 2. Fetch upstream
     info "Fetching upstream..."
-    if ! git fetch upstream 2>&1; then
+    if ! git fetch upstream &>/dev/null; then
         fatal "Failed to fetch upstream. Check the URL: $upstream_url"
     fi
 
@@ -202,8 +202,6 @@ cmd_init() {
     # Verify upstream branch exists
     if ! git rev-parse --verify "upstream/$upstream_branch" &>/dev/null; then
         fatal "Branch 'upstream/$upstream_branch' not found. Available branches:"
-        git branch -r | grep 'upstream/' | sed 's/^/  /'
-        return 1
     fi
 
     # 4. Set config
@@ -220,7 +218,7 @@ cmd_init() {
 
     # 6. Create tracking branch (mirrors upstream exactly)
     info "Creating tracking branch '${TRACKING_BRANCH}'..."
-    git branch -f "$TRACKING_BRANCH" "upstream/$UPSTREAM_BRANCH"
+    git branch -f "$TRACKING_BRANCH" "upstream/$UPSTREAM_BRANCH" &>/dev/null
 
     # 7. Create patches branch (where your customizations go)
     local current
@@ -264,17 +262,21 @@ cmd_init() {
         git checkout "$PATCHES_BRANCH" 2>/dev/null
     fi
 
-    echo ""
-    success "bingo-light initialized!"
-    echo ""
-    echo -e "  ${DIM}Upstream :${RESET} $UPSTREAM_URL ($UPSTREAM_BRANCH)"
-    echo -e "  ${DIM}Tracking :${RESET} $TRACKING_BRANCH (mirrors upstream, don't touch)"
-    echo -e "  ${DIM}Patches  :${RESET} $PATCHES_BRANCH (your customizations go here)"
-    echo ""
-    echo -e "  ${BOLD}Next steps:${RESET}"
-    echo -e "  1. Make your changes, then: ${CYAN}bingo-light patch new <name>${RESET}"
-    echo -e "  2. To sync with upstream:   ${CYAN}bingo-light sync${RESET}"
-    echo -e "  3. To check health:         ${CYAN}bingo-light status${RESET}"
+    if [[ "$JSON_MODE" == true ]]; then
+        json_out '{"ok":true,"upstream":"'"$upstream_url"'","branch":"'"$upstream_branch"'","tracking":"'"$TRACKING_BRANCH"'","patches":"'"$PATCHES_BRANCH"'"}'
+    else
+        echo ""
+        success "bingo-light initialized!"
+        echo ""
+        echo -e "  ${DIM}Upstream :${RESET} $UPSTREAM_URL ($UPSTREAM_BRANCH)"
+        echo -e "  ${DIM}Tracking :${RESET} $TRACKING_BRANCH (mirrors upstream, don't touch)"
+        echo -e "  ${DIM}Patches  :${RESET} $PATCHES_BRANCH (your customizations go here)"
+        echo ""
+        echo -e "  ${BOLD}Next steps:${RESET}"
+        echo -e "  1. Make your changes, then: ${CYAN}bingo-light patch new <name>${RESET}"
+        echo -e "  2. To sync with upstream:   ${CYAN}bingo-light sync${RESET}"
+        echo -e "  3. To check health:         ${CYAN}bingo-light status${RESET}"
+    fi
 }
 
 # ─── Command: patch ───────────────────────────────────────────────────────────
@@ -313,6 +315,8 @@ cmd_patch() {
             echo -e "  ${CYAN}export${RESET} [dir]        Export all patches as .patch files"
             echo -e "  ${CYAN}import${RESET} <file>       Import a .patch file into the stack"
             echo -e "  ${CYAN}reorder${RESET}             Interactively reorder patches"
+            echo -e "  ${CYAN}squash${RESET} <idx1> <idx2>  Merge two adjacent patches"
+            echo -e "  ${CYAN}meta${RESET} <name> [key] [value]  Get/set patch metadata"
             echo ""
             echo -e "${DIM}Example:${RESET}"
             echo "  bingo-light patch new add-custom-auth"
@@ -399,16 +403,23 @@ patch_new() {
     local commit_msg="$PATCH_PREFIX $name: $description"
 
     # Commit
-    git commit -m "$commit_msg"
+    if [[ "$JSON_MODE" == true ]]; then
+        git commit -m "$commit_msg" &>/dev/null
+    else
+        git commit -m "$commit_msg"
+    fi
     local short_hash
     short_hash=$(git rev-parse --short HEAD)
 
-    echo ""
-    success "Patch '${BOLD}${name}${RESET}' created (${DIM}${short_hash}${RESET})"
-
-    local total
-    total=$(count_patches)
-    dim "  Patch stack: $total patch(es) total"
+    if [[ "$JSON_MODE" == true ]]; then
+        json_out '{"ok":true,"patch":"'"$name"'","hash":"'"$short_hash"'","description":"'"$(echo "$description" | json_escape)"'"}'
+    else
+        echo ""
+        success "Patch '${BOLD}${name}${RESET}' created (${DIM}${short_hash}${RESET})"
+        local total
+        total=$(count_patches)
+        dim "  Patch stack: $total patch(es) total"
+    fi
 }
 
 patch_list() {
@@ -836,7 +847,7 @@ cmd_sync() {
 
     # 1. Fetch upstream
     info "Fetching upstream ($UPSTREAM_URL)..."
-    git fetch upstream 2>&1 || fatal "Failed to fetch upstream."
+    git fetch upstream 2>/dev/null || fatal "Failed to fetch upstream."
 
     # 2. Check how far behind we are
     local tracking_head upstream_head
@@ -854,8 +865,6 @@ cmd_sync() {
 
     local behind
     behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH")
-    local ahead_count
-    ahead_count=$(git rev-list --count "upstream/$UPSTREAM_BRANCH..$TRACKING_BRANCH")
 
     info "Upstream has ${BOLD}${behind}${RESET} new commit(s)."
 
@@ -866,49 +875,66 @@ cmd_sync() {
     # 3. Dry run: test if rebase would succeed
     if [[ "$dry_run" == true ]]; then
         header "Dry run: testing rebase..."
-        echo ""
+        [[ "$JSON_MODE" != true ]] && echo ""
 
         # Create a temporary branch to test
         local tmp_branch="bl-dryrun-$$"
-        git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
+        git branch "$tmp_branch" "$PATCHES_BRANCH" &>/dev/null
 
         # Update tracking to test against
         local tmp_tracking="bl-dryrun-tracking-$$"
-        git branch "$tmp_tracking" "upstream/$UPSTREAM_BRANCH" 2>/dev/null
+        git branch "$tmp_tracking" "upstream/$UPSTREAM_BRANCH" &>/dev/null
 
-        if git rebase --onto "$tmp_tracking" "$TRACKING_BRANCH" "$tmp_branch" 2>/dev/null; then
-            success "Dry run: rebase would succeed cleanly!"
+        if git rebase --onto "$tmp_tracking" "$TRACKING_BRANCH" "$tmp_branch" &>/dev/null; then
+            if [[ "$JSON_MODE" == true ]]; then
+                json_out '{"ok":true,"dry_run":true,"clean":true,"behind":'"$behind"',"patches":'"$patch_count"'}'
+            else
+                success "Dry run: rebase would succeed cleanly!"
+            fi
         else
-            warn "Dry run: rebase would have conflicts."
-            echo ""
-            # Show which files conflict
             local conflicted
-            conflicted=$(git diff --name-only --diff-filter=U 2>/dev/null)
-            if [[ -n "$conflicted" ]]; then
-                echo -e "  ${RED}Conflicted files:${RESET}"
-                echo "$conflicted" | while read -r f; do echo -e "    ${RED}${f}${RESET}"; done
+            conflicted=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+            if [[ "$JSON_MODE" == true ]]; then
+                local files_json="[]"
+                if [[ -n "$conflicted" ]]; then
+                    files_json="["
+                    local first_f=true
+                    while IFS= read -r f; do
+                        [[ "$first_f" == true ]] && first_f=false || files_json+=","
+                        files_json+='"'"$(echo "$f" | json_escape)"'"'
+                    done <<< "$conflicted"
+                    files_json+="]"
+                fi
+                json_out '{"ok":true,"dry_run":true,"clean":false,"behind":'"$behind"',"patches":'"$patch_count"',"conflicted_files":'"$files_json"'}'
+            else
+                warn "Dry run: rebase would have conflicts."
+                echo ""
+                if [[ -n "$conflicted" ]]; then
+                    echo -e "  ${RED}Conflicted files:${RESET}"
+                    echo "$conflicted" | while read -r f; do echo -e "    ${RED}${f}${RESET}"; done
+                fi
             fi
             git rebase --abort 2>/dev/null || true
         fi
 
         # Cleanup
-        git checkout "$PATCHES_BRANCH" 2>/dev/null || true
-        git branch -D "$tmp_branch" 2>/dev/null || true
-        git branch -D "$tmp_tracking" 2>/dev/null || true
+        git checkout "$PATCHES_BRANCH" &>/dev/null || true
+        git branch -D "$tmp_branch" &>/dev/null || true
+        git branch -D "$tmp_tracking" &>/dev/null || true
         return 0
     fi
 
     # 4. Confirm
-    if [[ "$force" != true ]]; then
+    if [[ "$force" != true && "$JSON_MODE" != true ]]; then
         echo ""
         echo -e "  This will rebase your ${BOLD}${patch_count}${RESET} patch(es) onto ${BOLD}${behind}${RESET} new upstream commit(s)."
         confirm "Proceed? [Y/n]" "y" || { info "Cancelled."; return 0; }
     fi
 
-    echo ""
+    [[ "$JSON_MODE" != true ]] && echo ""
 
     # 5. Ensure we're on the patches branch
-    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH"
+    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
 
     # 6. Save current state for rollback (persist for undo)
     local saved_head
@@ -922,13 +948,15 @@ cmd_sync() {
 
     # 7. Update tracking branch
     info "Updating tracking branch..."
-    git branch -f "$TRACKING_BRANCH" "upstream/$UPSTREAM_BRANCH"
+    git branch -f "$TRACKING_BRANCH" "upstream/$UPSTREAM_BRANCH" &>/dev/null
 
     # 8. Rebase patches
     info "Rebasing patches onto new upstream..."
-    echo ""
+    [[ "$JSON_MODE" != true ]] && echo ""
 
-    if git rebase --onto "$TRACKING_BRANCH" "$saved_tracking" "$PATCHES_BRANCH" 2>&1; then
+    local rebase_output
+    if rebase_output=$(git rebase --onto "$TRACKING_BRANCH" "$saved_tracking" "$PATCHES_BRANCH" 2>&1); then
+        [[ "$JSON_MODE" != true ]] && [[ -n "$rebase_output" ]] && echo "$rebase_output"
         # Record sync history + run hooks
         record_sync_history "$(pwd)" "$behind" "$(git rev-parse --short "$saved_tracking" 2>/dev/null)"
         run_hooks "on-sync-success" '{"behind_before":'"$behind"',"patches_rebased":'"$patch_count"'}'
@@ -963,6 +991,7 @@ cmd_sync() {
             fi
         fi
     else
+        [[ "$JSON_MODE" != true ]] && [[ -n "$rebase_output" ]] && echo "$rebase_output"
         # Check if rerere auto-resolved all conflicts
         local unresolved
         unresolved=$(git diff --name-only --diff-filter=U 2>/dev/null)
@@ -1446,7 +1475,11 @@ cmd_undo() {
         rm -f .bingo/.undo-tracking
     fi
 
-    success "Undone. Patches and tracking branches restored."
+    if [[ "$JSON_MODE" == true ]]; then
+        json_out '{"ok":true,"restored_to":"'"$prev_head"'"}'
+    else
+        success "Undone. Patches and tracking branches restored."
+    fi
 }
 
 # ─── Command: diff ────────────────────────────────────────────────────────────
@@ -1958,7 +1991,10 @@ cmd_history() {
     fi
 
     if [[ "$JSON_MODE" == true ]]; then
-        cat "$SYNC_HISTORY_FILE"
+        local syncs
+        syncs=$(cat "$SYNC_HISTORY_FILE")
+        # The file is already JSON with {"syncs":[...]}, output as-is for backward compat
+        json_out "$syncs"
         return 0
     fi
 
@@ -2058,10 +2094,9 @@ print(f'OK Added: {alias} ({rpath})')
                     [[ -z "$path" ]] && continue
                     [[ "$first" == true ]] && first=false || results+=","
                     local st
-                    st=$("$0" --json --yes status 2>/dev/null < /dev/null) || st='{"ok":false}'
                     # Run in subshell with cd
                     st=$(cd "$path" 2>/dev/null && "$0" --json --yes status 2>/dev/null < /dev/null) || st='{"ok":false}'
-                    results+='{"alias":"'"$alias"'","path":"'"$path"'","status":'"$st"'}'
+                    results+='{"alias":"'"$(echo "$alias" | json_escape)"'","path":"'"$(echo "$path" | json_escape)"'","status":'"$st"'}'
                 done < <(printf '%s' "$WORKSPACE_CONFIG" | python3 -c "
 import json, sys
 with open(sys.stdin.read().strip()) as f: data = json.load(f)
@@ -2176,7 +2211,7 @@ EOF
     echo -e "    ${CYAN}patch reorder${RESET}                   Reorder patch stack"
     echo ""
     echo -e "  ${BOLD}Sync with Upstream:${RESET}"
-    echo -e "    ${CYAN}sync${RESET} [--dry-run] [--force]      Rebase patches onto latest upstream"
+    echo -e "    ${CYAN}sync${RESET} [--dry-run] [--force] [--test]  Rebase patches onto latest upstream"
     echo -e "    ${CYAN}undo${RESET}                            Undo last sync"
     echo ""
     echo -e "  ${BOLD}Monitoring:${RESET}"
@@ -2184,9 +2219,18 @@ EOF
     echo -e "    ${CYAN}doctor${RESET}                          Diagnose setup issues"
     echo -e "    ${CYAN}diff${RESET}                            Show all changes vs upstream"
     echo -e "    ${CYAN}log${RESET}                             Show sync history"
+    echo -e "    ${CYAN}conflict-analyze${RESET}                Analyze rebase conflicts (structured output)"
+    echo -e "    ${CYAN}history${RESET}                         Detailed sync history with hash mappings"
+    echo ""
+    echo -e "  ${BOLD}Configuration:${RESET}"
+    echo -e "    ${CYAN}config${RESET} get|set|list             Manage configuration"
+    echo -e "    ${CYAN}test${RESET}                            Run configured test suite"
     echo ""
     echo -e "  ${BOLD}Automation:${RESET}"
     echo -e "    ${CYAN}auto-sync${RESET}                       Generate GitHub Actions workflow"
+    echo ""
+    echo -e "  ${BOLD}Multi-repo:${RESET}"
+    echo -e "    ${CYAN}workspace${RESET} init|add|status|sync|list  Multi-repo management"
     echo ""
     echo -e "  ${BOLD}Quick Start:${RESET}"
     echo ""

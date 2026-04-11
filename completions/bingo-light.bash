@@ -10,11 +10,11 @@ _bingo_light() {
     local cur prev words cword
     _init_completion || return
 
-    local -r toplevel_commands="init patch sync status doctor auto-sync log undo diff version help"
-    local -r toplevel_aliases="p s st d"
+    local -r toplevel_commands="init patch sync status doctor auto-sync log undo diff version help conflict-analyze config history test workspace"
+    local -r toplevel_aliases="p s st d ws"
     local -r all_toplevel="${toplevel_commands} ${toplevel_aliases}"
 
-    local -r patch_subcommands="new list show edit drop export import reorder"
+    local -r patch_subcommands="new list show edit drop export import reorder squash meta"
     local -r patch_aliases="ls add create rm remove"
     local -r all_patch="${patch_subcommands} ${patch_aliases}"
 
@@ -36,7 +36,7 @@ _bingo_light() {
             diff|d)
                 cmd="diff"
                 ;;
-            init|doctor|auto-sync|log|undo|version|help)
+            init|doctor|auto-sync|log|undo|version|help|conflict-analyze|config|history|test|workspace|ws)
                 cmd="${words[i]}"
                 ;;
             *)
@@ -99,7 +99,7 @@ _bingo_light() {
 
     # Top-level: no command selected yet
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--help -h --version" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--help -h --version --json --yes -y" -- "$cur") )
     else
         COMPREPLY=( $(compgen -W "${all_toplevel}" -- "$cur") )
     fi

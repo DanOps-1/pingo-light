@@ -15,6 +15,8 @@ Keys:
   j/k  navigate repos      q  quit
 """
 
+from __future__ import annotations
+
 import curses
 import json
 import os
@@ -122,6 +124,8 @@ def main(stdscr):
             statuses[cwd] = run_bl(["status"], cwd)
 
     refresh_data()
+    last_refresh = time.time()
+    selected = min(selected, max(0, len(repos) - 1))
 
     while True:
         stdscr.clear()
@@ -148,6 +152,7 @@ def main(stdscr):
         now = time.time()
         if now - last_refresh > 30:
             refresh_data()
+            selected = min(selected, max(0, len(repos) - 1))
             last_refresh = now
 
         key = stdscr.getch()
@@ -155,6 +160,7 @@ def main(stdscr):
             break
         elif key == ord("r"):
             refresh_data()
+            selected = min(selected, max(0, len(repos) - 1))
             last_refresh = time.time()
         elif key == ord("j") and selected < len(repos) - 1:
             selected += 1
@@ -166,6 +172,7 @@ def main(stdscr):
             stdscr.refresh()
             run_bl(["sync"], repo["path"])
             refresh_data()
+            selected = min(selected, max(0, len(repos) - 1))
         elif key == ord("d") and repos:
             repo = repos[selected]
             stdscr.addnstr(height - 2, 0, f" Dry-run {repo['alias']}...", width - 1)

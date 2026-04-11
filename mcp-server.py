@@ -19,6 +19,8 @@ Usage:
   { "mcpServers": { "bingo-light": { "command": "python3", "args": ["/path/to/mcp-server.py"] } } }
 """
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
@@ -163,7 +165,7 @@ TOOLS = [
                 },
                 "output_dir": {
                     "type": "string",
-                    "description": "Output directory (default: .pl-patches)"
+                    "description": "Output directory (default: .bl-patches)"
                 }
             },
             "required": ["cwd"]
@@ -509,10 +511,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_bl(["conflict-analyze"], cwd)
 
     elif name == "bingo_conflict_resolve":
-        from pathlib import Path as _P
         try:
-            file_path = str(_P(cwd, arguments["file"]).resolve())
-            _P(file_path).relative_to(_P(cwd).resolve())
+            file_path = str(Path(cwd, arguments["file"]).resolve())
+            Path(file_path).relative_to(Path(cwd).resolve())
         except (ValueError, RuntimeError):
             return {"content": [{"type": "text", "text": f"Security: path escapes repository: {arguments['file']}"}], "isError": True}
         if not os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) and not os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
@@ -594,12 +595,18 @@ def read_message() -> dict | None:
             key, value = line.split(":", 1)
             headers[key.strip().lower()] = value.strip()
 
-    content_length = int(headers.get("content-length", 0))
+    try:
+        content_length = int(headers.get("content-length", 0))
+    except (ValueError, TypeError):
+        return None
     if content_length == 0:
         return None
 
     body = sys.stdin.read(content_length)
-    return json.loads(body)
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return None
 
 
 def send_message(msg: dict):

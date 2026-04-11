@@ -20,6 +20,11 @@ _bingo-light() {
         'diff:Show differences between states'
         'version:Print version information'
         'help:Show help for a command'
+        'conflict-analyze:Analyze conflicts during rebase'
+        'config:Get/set/list configuration'
+        'history:Show sync history with hash mappings'
+        'test:Run configured test suite'
+        'workspace:Manage multiple forks'
     )
 
     local -a toplevel_aliases=(
@@ -27,6 +32,7 @@ _bingo-light() {
         's:Alias for sync'
         'st:Alias for status'
         'd:Alias for diff'
+        'ws:Alias for workspace'
     )
 
     local -a patch_subcommands=(
@@ -38,6 +44,8 @@ _bingo-light() {
         'export:Export patches to files'
         'import:Import patches from files'
         'reorder:Reorder the patch stack'
+        'squash:Squash two patches into one'
+        'meta:Get/set patch metadata'
     )
 
     local -a patch_aliases=(
@@ -51,6 +59,7 @@ _bingo-light() {
     local -a sync_flags=(
         '(-f --force)'{-f,--force}'[Force sync, overwriting conflicts]'
         '(-n --dry-run)'{-n,--dry-run}'[Show what would be done without making changes]'
+        '(-t --test)'{-t,--test}'[Run test suite after sync]'
         '(- *)'{-h,--help}'[Show help]'
     )
 
@@ -62,6 +71,8 @@ _bingo-light() {
     local -a global_flags=(
         '(- *)'{-h,--help}'[Show help]'
         '(- *)--version[Show version]'
+        '--json[Output structured JSON]'
+        '(-y --yes)'{-y,--yes}'[Non-interactive mode, auto-confirm prompts]'
     )
 
     local -a help_flag=(
@@ -75,6 +86,8 @@ _bingo-light() {
     _arguments -C \
         '(- *)'{-h,--help}'[Show help]' \
         '(- *)--version[Show version]' \
+        '--json[Output structured JSON]' \
+        '(-y --yes)'{-y,--yes}'[Non-interactive mode, auto-confirm prompts]' \
         '1:command:->command' \
         '*::arg:->args' && return
 
@@ -103,7 +116,7 @@ _bingo-light() {
                                 list|ls)
                                     _arguments $patch_list_flags
                                     ;;
-                                new|add|create|show|edit|drop|rm|remove|export|import|reorder)
+                                new|add|create|show|edit|drop|rm|remove|export|import|reorder|squash|meta)
                                     _arguments $help_flag
                                     ;;
                             esac
@@ -119,7 +132,7 @@ _bingo-light() {
                 diff|d)
                     _arguments $help_flag
                     ;;
-                init|doctor|auto-sync|log|undo|version)
+                init|doctor|auto-sync|log|undo|version|conflict-analyze|config|history|test|workspace|ws)
                     _arguments $help_flag
                     ;;
                 help)
