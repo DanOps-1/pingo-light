@@ -452,6 +452,22 @@ TOOLS = [
             "required": ["cwd"]
         }
     },
+    {
+        "name": "bingo_session",
+        "description": (
+            "Read or update AI session notes (.bingo/session.md). Call with update=true "
+            "at the START of a conversation to snapshot fork state. Read without update "
+            "to get cached context without running expensive git commands."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"},
+                "update": {"type": "boolean", "description": "If true, regenerate notes from current state"}
+            },
+            "required": ["cwd"]
+        }
+    },
 ]
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
@@ -652,6 +668,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
     elif name == "bingo_smart_sync":
         return run_bl(["smart-sync"], cwd)
+
+    elif name == "bingo_session":
+        args = ["session"]
+        if arguments.get("update"):
+            args.append("update")
+        return run_bl(args, cwd)
 
     else:
         return {

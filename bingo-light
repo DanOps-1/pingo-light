@@ -593,7 +593,7 @@ patch_show() {
     hash=$(resolve_patch "$target" 2>/dev/null) || { fatal "Patch '${target}' not found."; }
 
     if [[ "$JSON_MODE" == true ]]; then
-        local subject short_hash stat diff_content pname
+        local subject short_hash stat diff_content pname diff_len
         short_hash=$(git rev-parse --short "$hash")
         subject=$(git log -1 --format="%s" "$hash" | json_escape)
         pname=""
@@ -602,7 +602,14 @@ patch_show() {
         [[ "$raw_subj" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
         stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
         diff_content=$(git diff-tree --no-commit-id -p "$hash" | json_escape)
-        json_out '{"ok":true,"patch":{"name":"'"$(echo "$pname" | json_escape)"'","hash":"'"$short_hash"'","subject":"'"$subject"'","stat":"'"$stat"'","diff":"'"$diff_content"'"}}'
+        diff_len=${#diff_content}
+        if [[ $diff_len -gt 50000 ]]; then
+            local preview="${diff_content:0:2000}"
+            local size_kb=$(( diff_len / 1024 ))
+            json_out '{"ok":true,"truncated":true,"patch":{"name":"'"$(echo "$pname" | json_escape)"'","hash":"'"$short_hash"'","subject":"'"$subject"'","stat":"'"$stat"'","preview":"'"$preview"'","full_size":'"$diff_len"',"message":"Diff too large ('"$size_kb"'KB). Showing preview. Use bingo-light patch show without --json for full output."}}'
+        else
+            json_out '{"ok":true,"truncated":false,"patch":{"name":"'"$(echo "$pname" | json_escape)"'","hash":"'"$short_hash"'","subject":"'"$subject"'","stat":"'"$stat"'","diff":"'"$diff_content"'"}}'
+        fi
         return 0
     fi
 
@@ -1780,10 +1787,17 @@ cmd_diff() {
     }
 
     if [[ "$JSON_MODE" == true ]]; then
-        local stat diff_content
+        local stat diff_content diff_len
         stat=$(git diff "$base..$PATCHES_BRANCH" --stat | json_escape)
         diff_content=$(git diff "$base..$PATCHES_BRANCH" | json_escape)
-        json_out '{"ok":true,"stat":"'"$stat"'","diff":"'"$diff_content"'"}'
+        diff_len=${#diff_content}
+        if [[ $diff_len -gt 50000 ]]; then
+            local preview="${diff_content:0:2000}"
+            local size_kb=$(( diff_len / 1024 ))
+            json_out '{"ok":true,"truncated":true,"stat":"'"$stat"'","preview":"'"$preview"'","full_size":'"$diff_len"',"message":"Diff too large ('"$size_kb"'KB). Showing preview. Use bingo-light diff without --json for full output."}'
+        else
+            json_out '{"ok":true,"truncated":false,"stat":"'"$stat"'","diff":"'"$diff_content"'"}'
+        fi
         return 0
     fi
 
@@ -2554,6 +2568,106 @@ for r in data.get('repos', []):
     esac
 }
 
+# ─── Command: session ─────────────────────────────────────────────────────────
+
+cmd_session() {
+    local subcmd="${1:-}"
+    shift 2>/dev/null || true
+
+    load_config
+
+    local session_file=".bingo/session.md"
+
+    if [[ "$subcmd" == "update" ]]; then
+        # Update mode: regenerate session notes from current state
+        git fetch upstream 2>/dev/null || true
+
+        local tracking_head upstream_head behind=0
+        tracking_head=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null || echo "")
+        upstream_head=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo "")
+        if [[ -n "$tracking_head" && -n "$upstream_head" && "$tracking_head" != "$upstream_head" ]]; then
+            behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo 0)
+        fi
+
+        local base="" patch_count=0
+        if base=$(patches_base 2>/dev/null); then
+            patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
+        fi
+
+        local patch_list=""
+        if [[ "$patch_count" -gt 0 ]]; then
+            local index=1
+            while IFS= read -r hash; do
+                local subject files_count
+                subject=$(git log -1 --format="%s" "$hash")
+                files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
+                patch_list+="$(printf '%d. %s (%d file(s))' "$index" "$subject" "$files_count")"$'\n'
+                ((index++))
+            done <<< "$(git rev-list --reverse "$base..$PATCHES_BRANCH")"
+        fi
+        [[ -z "$patch_list" ]] && patch_list="(none)"
+
+        local last_sync_info=""
+        local last_sync_entry
+        last_sync_entry=$(git reflog show "$PATCHES_BRANCH" --format="%gd %gs %cr" 2>/dev/null | grep -i "rebase\|reset" | head -1)
+        if [[ -n "$last_sync_entry" ]]; then
+            last_sync_info="$last_sync_entry"
+        else
+            local last_commit_date
+            last_commit_date=$(git log -1 --format="%cr" "$PATCHES_BRANCH" 2>/dev/null || echo "unknown")
+            last_sync_info="Last patches commit: $last_commit_date"
+        fi
+
+        local rerere_count=0
+        rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+
+        mkdir -p .bingo
+        cat > "$session_file" << SESSIONEOF
+# bingo-light session notes
+Updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+## Upstream
+- URL: $UPSTREAM_URL
+- Branch: $UPSTREAM_BRANCH
+- Behind: $behind commits
+
+## Patch Stack ($patch_count patches)
+$patch_list
+## Last Sync
+$last_sync_info
+
+## Rerere
+$rerere_count recorded resolution(s)
+SESSIONEOF
+
+        if [[ "$JSON_MODE" == true ]]; then
+            local content
+            content=$(cat "$session_file" | json_escape)
+            json_out '{"ok":true,"updated":true,"session":"'"$content"'"}'
+        else
+            success "Session notes updated: $session_file"
+            cat "$session_file"
+        fi
+    else
+        # Read mode: return existing session notes
+        if [[ -f "$session_file" ]]; then
+            if [[ "$JSON_MODE" == true ]]; then
+                local content
+                content=$(cat "$session_file" | json_escape)
+                json_out '{"ok":true,"session":"'"$content"'"}'
+            else
+                cat "$session_file"
+            fi
+        else
+            if [[ "$JSON_MODE" == true ]]; then
+                json_out '{"ok":true,"session":"","message":"No session notes yet. Run bingo-light session update to create."}'
+            else
+                info "No session notes yet. Run 'bingo-light session update' to create."
+            fi
+        fi
+    fi
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 show_help() {
@@ -2594,6 +2708,7 @@ EOF
     echo -e "    ${CYAN}log${RESET}                             Show sync history"
     echo -e "    ${CYAN}conflict-analyze${RESET}                Analyze rebase conflicts (structured output)"
     echo -e "    ${CYAN}history${RESET}                         Detailed sync history with hash mappings"
+    echo -e "    ${CYAN}session${RESET} [update]                 AI session notes (.bingo/session.md)"
     echo ""
     echo -e "  ${BOLD}Configuration:${RESET}"
     echo -e "    ${CYAN}config${RESET} get|set|list             Manage configuration"
@@ -2644,6 +2759,7 @@ main() {
         history)            cmd_history "$@" ;;
         test)               cmd_test "$@" ;;
         workspace|ws)       cmd_workspace "$@" ;;
+        session)            cmd_session "$@" ;;
         version|-v|--version) echo "bingo-light $VERSION" ;;
         help|-h|--help|"")    show_help ;;
         *)          fatal "Unknown command: $cmd. Run 'bingo-light --help' for usage." ;;
