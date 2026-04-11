@@ -34,10 +34,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Lint bingo-light
-        run: shellcheck bingo-light
+        run: shellcheck --severity=error bingo-light
 
       - name: Lint install.sh
         run: shellcheck install.sh || true
 
       - name: Lint contrib hooks
-        run: shellcheck contrib/hooks/*
+        run: shellcheck --severity=error contrib/hooks/*
