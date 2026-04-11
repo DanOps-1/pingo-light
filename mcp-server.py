@@ -452,6 +452,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     """Map MCP tool calls to bingo-light CLI commands."""
     cwd = arguments.get("cwd", ".")
 
+    # Validate cwd is a real directory (prevent arbitrary filesystem access)
+    if not os.path.isdir(cwd):
+        return {"content": [{"type": "text", "text": f"Invalid cwd: directory does not exist: {cwd}"}], "isError": True}
+
     if name == "bingo_status":
         return run_bl(["status"], cwd)
 
@@ -519,10 +523,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             return {"content": [{"type": "text", "text": "Not in a rebase. Nothing to resolve."}], "isError": True}
         content = arguments["content"]
         try:
-            with open(file_path, "w") as f:
+            # O_NOFOLLOW prevents symlink-based TOCTOU attacks
+            fd = os.open(file_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+            with os.fdopen(fd, "w") as f:
                 f.write(content)
             result = subprocess.run(
-                ["git", "add", arguments["file"]],
+                ["git", "add", file_path],  # Use validated path, not raw input
                 cwd=cwd, capture_output=True, text=True, timeout=10,
             )
             if result.returncode != 0:

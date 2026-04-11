@@ -150,7 +150,7 @@ cmd_init() {
 
     if [[ -z "$upstream_url" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
-            fatal "Missing required argument"
+            fatal "init: missing <upstream-url>"
         fi
         echo -e "${BOLD}Usage:${RESET} bingo-light init <upstream-url> [upstream-branch]"
         echo ""
@@ -214,7 +214,9 @@ cmd_init() {
 
     # Verify upstream branch exists
     if ! git rev-parse --verify "upstream/$upstream_branch" &>/dev/null; then
-        fatal "Branch 'upstream/$upstream_branch' not found. Available branches:"
+        local avail
+        avail=$(git branch -r --list 'upstream/*' 2>/dev/null | sed 's|upstream/||;s/^ *//' | tr '\n' ', ' | sed 's/,$//')
+        fatal "Branch 'upstream/$upstream_branch' not found. Available: ${avail:-none}"
     fi
 
     # 4. Set config
@@ -318,7 +320,7 @@ cmd_patch() {
         meta)            cmd_patch_meta "$@" ;;
         *)
             if [[ "$JSON_MODE" == true ]]; then
-                fatal "Missing required argument"
+                fatal "patch: missing subcommand (new, list, show, drop, edit, export, import, reorder, squash, meta)"
             fi
             echo -e "${BOLD}Usage:${RESET} bingo-light patch <command>"
             echo ""
@@ -349,7 +351,7 @@ patch_new() {
 
     if [[ -z "$name" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
-            fatal "Missing required argument"
+            fatal "patch new: missing <name>"
         fi
         echo -e "${BOLD}Usage:${RESET} bingo-light patch new <name>"
         echo ""
@@ -551,7 +553,7 @@ patch_show() {
 
     if [[ -z "$target" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
-            fatal "Missing required argument"
+            fatal "patch show: missing <name or index>"
         fi
         echo -e "${BOLD}Usage:${RESET} bingo-light patch show <name|index>"
         return 1
@@ -583,7 +585,7 @@ patch_drop() {
 
     if [[ -z "$target" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
-            fatal "Missing required argument"
+            fatal "patch drop: missing <name or index>"
         fi
         echo -e "${BOLD}Usage:${RESET} bingo-light patch drop <name|index>"
         echo ""
@@ -630,7 +632,7 @@ patch_edit() {
 
     if [[ -z "$target" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
-            fatal "Missing required argument"
+            fatal "patch edit: missing <name or index>"
         fi
         echo -e "${BOLD}Usage:${RESET} bingo-light patch edit <name|index>"
         echo ""
@@ -737,7 +739,7 @@ patch_import() {
 
     if [[ -z "$patch_file" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
-            fatal "Missing required argument"
+            fatal "patch import: missing <file or dir>"
         fi
         echo -e "${BOLD}Usage:${RESET} bingo-light patch import <file.patch>"
         echo ""
@@ -1671,7 +1673,7 @@ cmd_conflict_analyze() {
             local conflict_count
             conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
 
-            json+='{"file":"'"$file"'","conflict_count":'"$conflict_count"','
+            json+='{"file":"'"$(echo "$file" | json_escape)"'","conflict_count":'"$conflict_count"','
             json+='"ours":"'"$ours"'","theirs":"'"$theirs"'"}'
         done <<< "$conflicted_files"
 
@@ -1841,7 +1843,7 @@ cmd_config() {
             fi
             ;;
         *)
-            if [[ "$JSON_MODE" == true ]]; then fatal "Missing required argument"; fi
+            if [[ "$JSON_MODE" == true ]]; then fatal "config: missing subcommand (get, set, list)"; fi
             echo -e "${BOLD}Usage:${RESET} bingo-light config <get|set|list>"
             echo ""
             echo "  get <key>          Get a config value"
@@ -1872,7 +1874,7 @@ cmd_patch_meta() {
     shift 2>/dev/null || true
 
     if [[ -z "$target" ]]; then
-        if [[ "$JSON_MODE" == true ]]; then fatal "Missing required argument"; fi
+        if [[ "$JSON_MODE" == true ]]; then fatal "patch meta: missing <name>"; fi
         echo -e "${BOLD}Usage:${RESET} bingo-light patch meta <name> [--set-reason|--set-tag|--set-expires|--set-upstream-pr] <value>"
         return 1
     fi
@@ -1941,7 +1943,7 @@ os.replace(tmp.name, path)
 " 2>/dev/null
 
         if [[ "$JSON_MODE" == true ]]; then
-            json_out '{"ok":true,"patch":"'"$target"'","set":"'"$action"'","value":"'"$(echo "$value" | json_escape)"'"}'
+            json_out '{"ok":true,"patch":"'"$(echo "$target" | json_escape)"'","set":"'"$action"'","value":"'"$(echo "$value" | json_escape)"'"}'
         else
             success "Set $action = $value for patch '$target'"
         fi
@@ -2068,7 +2070,7 @@ record_sync_history() {
             local pname="" subject
             subject=$(git log -1 --format="%s" "$hash")
             [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
-            mapping+='{"name":"'"$pname"'","hash":"'"$(git rev-parse --short "$hash")"'"}'
+            mapping+='{"name":"'"$(echo "$pname" | json_escape)"'","hash":"'"$(git rev-parse --short "$hash")"'"}'
         done <<< "$commits"
         mapping+="]"
     fi
