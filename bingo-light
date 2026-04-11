@@ -54,10 +54,13 @@ dim()     { [[ "$JSON_MODE" == true ]] && return; echo -e "${DIM}$*${RESET}"; }
 # ─── JSON Helpers ─────────────────────────────────────────────────────────────
 
 json_escape() {
-    # Read ALL input first, then escape for JSON string value
-    # Order: collect lines → backslash → quote → tab → CR → newline
-    sed -e ':a' -e 'N' -e '$!ba' \
-        -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' -e 's/\n/\\n/g'
+    # Escape special characters for JSON string values
+    # Uses awk (not sed) to avoid GNU sed N-at-EOF bug on single-line input
+    awk 'BEGIN{ORS=""} {
+        gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/,"\\t"); gsub(/\r/,"")
+        if(NR>1) printf "\\n"
+        printf "%s",$0
+    }'
 }
 json_out()    { printf '%s\n' "$1"; }
 
@@ -89,7 +92,9 @@ ensure_git_repo() {
 
 # Run hooks: .bingo/hooks/<event> with JSON data on stdin
 run_hooks() {
-    local event="$1" data="${2:-'{}'}"
+    local event="$1"
+    local data="${2:-}"
+    [[ -z "$data" ]] && data='{}'
     local hook=".bingo/hooks/$event"
     if [[ -x "$hook" ]]; then
         echo "$data" | "$hook" 2>/dev/null || true
@@ -161,8 +166,13 @@ cmd_init() {
 
     # Check if already initialized
     if [[ -f "$CONFIG_FILE" ]]; then
-        warn "bingo-light is already initialized in this repo."
-        confirm "Re-initialize? [y/N]" "n" || return 0
+        if [[ "$YES_MODE" == true ]]; then
+            # Non-interactive re-init: proceed silently
+            :
+        else
+            warn "bingo-light is already initialized in this repo."
+            confirm "Re-initialize? [y/N]" "n" || return 0
+        fi
     fi
 
     header "Initializing bingo-light..."
@@ -259,7 +269,7 @@ cmd_init() {
     # 9. Switch to patches branch
     if [[ "$(current_branch)" != "$PATCHES_BRANCH" ]]; then
         info "Switching to patches branch '${PATCHES_BRANCH}'..."
-        git checkout "$PATCHES_BRANCH" 2>/dev/null
+        git checkout "$PATCHES_BRANCH" &>/dev/null || true
     fi
 
     if [[ "$JSON_MODE" == true ]]; then
@@ -359,7 +369,7 @@ patch_new() {
     # Ensure we're on the patches branch
     if [[ "$(current_branch)" != "$PATCHES_BRANCH" ]]; then
         info "Switching to patches branch '${PATCHES_BRANCH}'..."
-        git checkout "$PATCHES_BRANCH"
+        git checkout "$PATCHES_BRANCH" &>/dev/null
     fi
 
     # Check if there are changes to commit
@@ -575,11 +585,13 @@ patch_drop() {
     local subject
     subject=$(git log -1 --format="%s" "$hash")
 
-    echo -e "  About to drop: ${BOLD}${subject}${RESET}"
+    if [[ "$JSON_MODE" != true ]]; then
+        echo -e "  About to drop: ${BOLD}${subject}${RESET}"
+    fi
     confirm "Are you sure? [y/N]" "n" || { info "Cancelled."; return 0; }
 
     # Ensure we're on the patches branch
-    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH"
+    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
 
     # Use rebase to drop the specific commit
     local pname=""
@@ -623,19 +635,25 @@ patch_edit() {
     info "Folding staged changes into: ${BOLD}${subject}${RESET}"
 
     # Create a fixup commit and auto-squash
-    git commit --fixup="$hash"
+    git commit --fixup="$hash" &>/dev/null
 
     # Non-interactive rebase with autosquash
     local base
     base=$(patches_base)
-    GIT_SEQUENCE_EDITOR=true git rebase --autosquash "$base" 2>/dev/null || {
+    GIT_SEQUENCE_EDITOR=true git rebase --autosquash "$base" &>/dev/null || {
         warn "Rebase conflict while editing patch. Resolve conflicts, then:"
-        echo "  git add <files>"
-        echo "  git rebase --continue"
+        if [[ "$JSON_MODE" != true ]]; then
+            echo "  git add <files>"
+            echo "  git rebase --continue"
+        fi
         return 1
     }
 
-    success "Patch updated."
+    if [[ "$JSON_MODE" == true ]]; then
+        json_out '{"ok":true,"edited":"'"$(echo "$subject" | json_escape)"'"}'
+    else
+        success "Patch updated."
+    fi
 }
 
 patch_export() {
@@ -697,7 +715,7 @@ patch_import() {
     fi
 
     # Ensure we're on patches branch
-    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH"
+    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
 
     if [[ -d "$patch_file" ]]; then
         # Import all patches from directory
@@ -732,7 +750,13 @@ patch_import() {
         }
     fi
 
-    success "Import complete."
+    local imported_count
+    imported_count=$(count_patches)
+    if [[ "$JSON_MODE" == true ]]; then
+        json_out '{"ok":true,"imported":true,"patch_count":'"$imported_count"'}'
+    else
+        success "Import complete."
+    fi
 }
 
 patch_reorder() {
@@ -1453,25 +1477,25 @@ cmd_undo() {
         return 0
     fi
 
-    local prev_subject
-    prev_subject=$(git log -1 --format="%s %cr" "$prev_head")
-    echo -e "  Current HEAD: ${DIM}$(git log -1 --format="%h %s" "$current_head")${RESET}"
-    echo -e "  Revert to:    ${BOLD}$(git log -1 --format="%h %s" "$prev_head")${RESET} ${DIM}($prev_subject)${RESET}"
-    echo ""
+    if [[ "$JSON_MODE" != true ]]; then
+        echo -e "  Current HEAD: ${DIM}$(git log -1 --format="%h %s" "$current_head")${RESET}"
+        echo -e "  Revert to:    ${BOLD}$(git log -1 --format="%h %s (%cr)" "$prev_head")${RESET}"
+        echo ""
+    fi
     confirm "Proceed? [y/N]" "n" || { info "Cancelled."; return 0; }
 
     # Restore patches branch
     if [[ "$(current_branch)" == "$PATCHES_BRANCH" ]]; then
-        git reset --hard "$prev_head"
+        git reset --hard "$prev_head" &>/dev/null
     else
-        git branch -f "$PATCHES_BRANCH" "$prev_head"
+        git branch -f "$PATCHES_BRANCH" "$prev_head" &>/dev/null
     fi
 
     # Restore tracking branch from saved state (so sync can re-detect upstream)
     if [[ -f .bingo/.undo-tracking ]]; then
         local prev_tracking
         prev_tracking=$(cat .bingo/.undo-tracking)
-        git branch -f "$TRACKING_BRANCH" "$prev_tracking"
+        git branch -f "$TRACKING_BRANCH" "$prev_tracking" &>/dev/null
         rm -f .bingo/.undo-tracking
     fi
 
@@ -2051,7 +2075,7 @@ cmd_test() {
 
 # ─── Command: workspace ───────────────────────────────────────────────────────
 
-WORKSPACE_CONFIG="${HOME}/.config/bingo-light/workspace.json"
+WORKSPACE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/bingo-light/workspace.json"
 
 cmd_workspace() {
     local subcmd="${1:-}"

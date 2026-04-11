@@ -2,7 +2,23 @@
 # bingo-light — interactive setup wizard
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+GITHUB_RAW="https://raw.githubusercontent.com/DanOps-1/bingo-light/main"
+
+# Detect if running from a local clone or piped from curl
+if [[ -f "$(dirname "$0")/bingo-light" ]] 2>/dev/null; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+else
+    # Running via curl pipe — download to temp dir
+    SCRIPT_DIR="$(mktemp -d)"
+    trap 'rm -rf "$SCRIPT_DIR"' EXIT
+    curl -fsSL "$GITHUB_RAW/bingo-light" -o "$SCRIPT_DIR/bingo-light"
+    curl -fsSL "$GITHUB_RAW/mcp-server.py" -o "$SCRIPT_DIR/mcp-server.py"
+    curl -fsSL "$GITHUB_RAW/.claude/commands/bingo.md" -o "$SCRIPT_DIR/bingo.md"
+    mkdir -p "$SCRIPT_DIR/completions"
+    curl -fsSL "$GITHUB_RAW/completions/bingo-light.bash" -o "$SCRIPT_DIR/completions/bingo-light.bash"
+    curl -fsSL "$GITHUB_RAW/completions/bingo-light.zsh" -o "$SCRIPT_DIR/completions/bingo-light.zsh"
+    curl -fsSL "$GITHUB_RAW/completions/bingo-light.fish" -o "$SCRIPT_DIR/completions/bingo-light.fish"
+fi
 
 # ─── Terminal Control ─────────────────────────────────────────────────────────
 
