@@ -600,7 +600,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
     elif name == "bingo_patch_meta":
         args = ["patch", "meta", arguments["name"]]
-        if arguments.get("set_field") and arguments.get("value"):
+        if arguments.get("set_field") and "value" in arguments:
             args += [f"--set-{arguments['set_field'].replace('_', '-')}", arguments["value"]]
         return run_bl(args, cwd)
 

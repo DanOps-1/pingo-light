@@ -147,6 +147,7 @@ patches_base() {
 # tracking branch may be stale. Detect and fix.
 _fix_stale_tracking() {
     [[ -d .git/rebase-merge || -d .git/rebase-apply ]] && return  # don't touch during active rebase
+    [[ -f .bingo/.undo-head ]] && return  # don't auto-fix after undo (user intentionally rolled back)
     local tracking_pos patches_base_pos upstream_pos
     tracking_pos=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null) || return
     upstream_pos=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null) || return
@@ -503,7 +504,7 @@ BEGIN { ORS="" }
     n++; files=0; stat=""
     split($0, a, "\t"); hash=a[2]; subj=a[3]
     name=""
-    if (match(subj, /^\[bl\] ([^:]+):/, m)) name=m[1]
+    if (match(subj, /^\[bl\] [^:]+:/)) { name=substr(subj, 6); sub(/:.*/, "", name) }
     gsub(/\\/, "\\\\", subj); gsub(/"/, "\\\"", subj); gsub(/\t/, "\\t", subj)
     gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name)
     next
@@ -1630,7 +1631,8 @@ cmd_undo() {
         git branch -f "$TRACKING_BRANCH" "$prev_tracking" &>/dev/null
         rm -f .bingo/.undo-tracking
     fi
-    rm -f .bingo/.undo-head
+    # Keep .undo-head as a marker to prevent _fix_stale_tracking from
+    # auto-advancing tracking. It gets overwritten on next sync.
 
     if [[ "$JSON_MODE" == true ]]; then
         json_out '{"ok":true,"restored_to":"'"$prev_head"'"}'
@@ -1784,7 +1786,7 @@ cmd_json_status() {
     n++; files=0
     split($0, a, "\t"); hash=a[2]; subj=a[3]
     name=""
-    if (match(subj, /^\[bl\] ([^:]+):/, m)) name=m[1]
+    if (match(subj, /^\[bl\] [^:]+:/)) { name=substr(subj, 6); sub(/:.*/, "", name) }
     next
 }
 /^[0-9]+\t[0-9]+\t/ { files++; next }
