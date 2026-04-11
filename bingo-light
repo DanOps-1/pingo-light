@@ -2373,6 +2373,8 @@ EOF
     echo -e "    ${CYAN}patch export${RESET} [dir]              Export patches as .patch files"
     echo -e "    ${CYAN}patch import${RESET} <file|dir>         Import .patch files"
     echo -e "    ${CYAN}patch reorder${RESET}                   Reorder patch stack"
+    echo -e "    ${CYAN}patch squash${RESET} <idx1> <idx2>       Merge two patches"
+    echo -e "    ${CYAN}patch meta${RESET} <name> [key] [val]   Get/set patch metadata"
     echo ""
     echo -e "  ${BOLD}Sync with Upstream:${RESET}"
     echo -e "    ${CYAN}sync${RESET} [--dry-run] [--force] [--test]  Rebase patches onto latest upstream"
