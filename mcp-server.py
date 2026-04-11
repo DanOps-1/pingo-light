@@ -402,6 +402,38 @@ TOOLS = [
             "required": ["cwd"]
         }
     },
+    {
+        "name": "bingo_patch_edit",
+        "description": "Amend an existing patch by folding staged changes into it. Stage changes with git add first, then call this.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"},
+                "target": {"type": "string", "description": "Patch name or index to edit"}
+            },
+            "required": ["cwd", "target"]
+        }
+    },
+    {
+        "name": "bingo_workspace_init",
+        "description": "Initialize a multi-repo workspace.",
+        "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}}, "required": ["cwd"]}
+    },
+    {
+        "name": "bingo_workspace_add",
+        "description": "Add a repository to the workspace.",
+        "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}, "path": {"type": "string"}, "alias": {"type": "string"}}, "required": ["cwd", "path"]}
+    },
+    {
+        "name": "bingo_workspace_sync",
+        "description": "Sync all repositories in the workspace.",
+        "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}}, "required": ["cwd"]}
+    },
+    {
+        "name": "bingo_workspace_list",
+        "description": "List all repositories in the workspace.",
+        "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}}, "required": ["cwd"]}
+    },
 ]
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
@@ -577,6 +609,21 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     elif name == "bingo_workspace_status":
         return run_bl(["workspace", "status"], cwd)
 
+    elif name == "bingo_patch_edit":
+        return run_bl(["patch", "edit", arguments["target"]], cwd)
+
+    elif name == "bingo_workspace_init":
+        return run_bl(["workspace", "init"], cwd)
+    elif name == "bingo_workspace_add":
+        args = ["workspace", "add", arguments["path"]]
+        if arguments.get("alias"):
+            args.append(arguments["alias"])
+        return run_bl(args, cwd)
+    elif name == "bingo_workspace_sync":
+        return run_bl(["workspace", "sync"], cwd)
+    elif name == "bingo_workspace_list":
+        return run_bl(["workspace", "list"], cwd)
+
     else:
         return {
             "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
@@ -648,7 +695,7 @@ def main():
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "bingo-light",
-                    "version": "1.1.0",
+                    "version": "1.2.0",
                 },
             }))
 

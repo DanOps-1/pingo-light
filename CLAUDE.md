@@ -9,7 +9,7 @@ AI-native fork maintenance tool. Single-file bash CLI + MCP server designed for 
 - Auto-detects non-TTY stdin → enables non-interactive mode automatically
 - `BINGO_DESCRIPTION` env var: set patch description without stdin
 - `conflict-analyze --json`: structured conflict info for AI resolution
-- MCP server: 22 tools including `bingo_conflict_resolve` (AI writes resolved content directly)
+- MCP server: 27 tools including `bingo_conflict_resolve` (AI writes resolved content directly)
 
 ## For AI agents: prefer MCP or --json
 
@@ -26,7 +26,7 @@ BINGO_DESCRIPTION="add feature X" bingo-light patch new feature-x --yes
 ## Project structure
 
 - `bingo-light` — The entire tool (single bash script)
-- `mcp-server.py` — MCP server (zero-dep Python 3, 22 tools)
+- `mcp-server.py` — MCP server (zero-dep Python 3, 27 tools)
 - `agent.py` — Advisor agent (monitor + analyze + auto-sync-if-safe)
 - `tui.py` — Curses terminal dashboard
 - `install.sh` — Copies to /usr/local/bin

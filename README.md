@@ -15,7 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
   <br>
-  <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP-22_tools-blueviolet.svg" alt="MCP: 22 tools"></a>
+  <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP-27_tools-blueviolet.svg" alt="MCP: 27 tools"></a>
   <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/Made_with-Bash-1f425f.svg" alt="Bash"></a>
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg" alt="Zero deps">
   <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
@@ -84,7 +84,7 @@ That's it. Three commands and your fork stays in sync forever.
 
 ### For AI Agents
 
-- :electric_plug: **MCP server (22 tools)** -- full fork management from init through conflict resolution.
+- :electric_plug: **MCP server (27 tools)** -- full fork management from init through conflict resolution.
 - :bar_chart: **`--json` on everything** -- every command returns structured JSON. Parse, don't scrape.
 - :mute: **`--yes` flag** -- fully non-interactive. No TTY required. No prompts. Ever.
 - :gear: **Auto-detect non-TTY** -- pipes and subprocesses trigger non-interactive mode automatically.
@@ -162,7 +162,7 @@ curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-lig
 
 ## For AI Agents
 
-bingo-light was designed from day one for AI agents. Every command speaks JSON. The MCP server exposes 22 tools. Non-interactive mode is the default when stdin is not a TTY.
+bingo-light was designed from day one for AI agents. Every command speaks JSON. The MCP server exposes 27 tools. Non-interactive mode is the default when stdin is not a TTY.
 
 ### MCP setup -- Claude Code
 
@@ -351,7 +351,7 @@ bingo-light help                              Show usage
 | One-command sync | **Yes** | No (multi-step) | No (manual) | Partial |
 | Conflict memory (rerere) | **Auto** | Manual enable | No | No |
 | Conflict prediction | **Yes** | No | No | No |
-| AI / MCP integration | **22 tools** | No | No | No |
+| AI / MCP integration | **27 tools** | No | No | No |
 | JSON output | **All commands** | No | No | Partial |
 | Non-interactive mode | **Native** | Partial | Partial | Yes |
 | Undo sync | **One command** | git reflog | Manual | Depends |
@@ -417,7 +417,7 @@ Yes. bingo-light uses standard git operations (fetch, rebase, push). It works wi
 
 ```
 bingo-light          CLI tool (single bash script, the whole thing)
-mcp-server.py        MCP server (zero-dep Python 3, 22 tools, JSON-RPC 2.0)
+mcp-server.py        MCP server (zero-dep Python 3, 27 tools, JSON-RPC 2.0)
 agent.py             Advisor agent (monitors drift, auto-syncs when safe)
 tui.py               Terminal dashboard (curses TUI, real-time monitoring)
 install.sh           Interactive installer (animated, sets up everything)

@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 CONFIG_FILE=".bingolight"
 PATCH_PREFIX="[bl]"
 MAX_PATCHES=100
@@ -470,7 +470,7 @@ patch_list() {
 
     local verbose="${1:-}"
     local total
-    total=$(echo "$commits" | wc -l)
+    total=$(echo "$commits" | wc -l | tr -d ' ')
 
     # JSON mode
     if [[ "$JSON_MODE" == true ]]; then
@@ -482,7 +482,7 @@ patch_list() {
             subject=$(git log -1 --format="%s" "$hash")
             pname=""
             [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
-            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
+            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
             stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
             [[ "$first" == true ]] && first=false || json_patches+=","
             json_patches+='{"name":"'"$(echo "$pname" | json_escape)"'","hash":"'"$short_hash"'","subject":"'"$(echo "$subject" | json_escape)"'","files":'"$files_count"',"stat":"'"$stat"'"}'
@@ -509,7 +509,7 @@ patch_list() {
         fi
 
         # Get change stats
-        files_changed=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
+        files_changed=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
         stat_summary=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //')
 
         # Color the index
@@ -712,7 +712,7 @@ patch_export() {
     git format-patch --numbered --output-directory "$output_dir" "$base..$PATCHES_BRANCH" >/dev/null
 
     # Also create a series file (quilt-compatible)
-    ls "$output_dir"/*.patch 2>/dev/null | sort | xargs -I{} basename {} > "$output_dir/series"
+    for f in "$output_dir"/*.patch; do basename "$f"; done | sort > "$output_dir/series"
 
     if [[ "$JSON_MODE" == true ]]; then
         local files_json="["
@@ -975,6 +975,7 @@ cmd_sync() {
         [[ "$JSON_MODE" != true ]] && echo ""
 
         # Create a temporary branch to test
+        trap 'git branch -D "bl-dryrun-$$" &>/dev/null; git branch -D "bl-dryrun-tracking-$$" &>/dev/null' EXIT
         local tmp_branch="bl-dryrun-$$"
         git branch "$tmp_branch" "$PATCHES_BRANCH" &>/dev/null
 
@@ -990,7 +991,7 @@ cmd_sync() {
             fi
         else
             local conflicted
-            conflicted=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+            conflicted=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
             if [[ "$JSON_MODE" == true ]]; then
                 local files_json="[]"
                 if [[ -n "$conflicted" ]]; then
@@ -1018,6 +1019,7 @@ cmd_sync() {
         git checkout "$PATCHES_BRANCH" &>/dev/null || true
         git branch -D "$tmp_branch" &>/dev/null || true
         git branch -D "$tmp_tracking" &>/dev/null || true
+        trap - EXIT
         return 0
     fi
 
@@ -1039,8 +1041,9 @@ cmd_sync() {
     local saved_tracking
     saved_tracking=$(git rev-parse "$TRACKING_BRANCH")
 
-    # Persist for undo command
+    # Persist for undo command (don't rely on reflog — it expires)
     mkdir -p .bingo
+    echo "$saved_head" > .bingo/.undo-head
     echo "$saved_tracking" > .bingo/.undo-tracking
 
     # 7. Update tracking branch
@@ -1091,7 +1094,7 @@ cmd_sync() {
         [[ "$JSON_MODE" != true ]] && [[ -n "$rebase_output" ]] && echo "$rebase_output"
         # Check if rerere auto-resolved all conflicts
         local unresolved
-        unresolved=$(git diff --name-only --diff-filter=U 2>/dev/null)
+        unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
         if [[ -z "$unresolved" ]]; then
             # rerere resolved everything! Auto-continue the rebase.
             info "rerere auto-resolved conflicts, continuing rebase..."
@@ -1108,7 +1111,7 @@ cmd_sync() {
                     break  # rebase done
                 fi
                 # Check again if rerere resolved the new conflict
-                unresolved=$(git diff --name-only --diff-filter=U 2>/dev/null)
+                unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
                 if [[ -n "$unresolved" ]]; then
                     rerere_ok=false
                     break  # real unresolved conflict
@@ -1129,10 +1132,14 @@ cmd_sync() {
             fi
         fi
 
+        # Rollback tracking branch so merge-base calculations stay correct
+        # (user can still resolve the rebase, tracking is restored on next sync)
+        git branch -f "$TRACKING_BRANCH" "$saved_tracking" &>/dev/null || true
+
         run_hooks "on-conflict" '{"patch_count":'"$patch_count"'}'
         if [[ "$JSON_MODE" == true ]]; then
             local conflicted_files_raw
-            conflicted_files_raw=$(git diff --name-only --diff-filter=U 2>/dev/null)
+            conflicted_files_raw=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
             local cf_json="["
             local cf_first=true
             while IFS= read -r cf; do
@@ -1155,7 +1162,6 @@ cmd_sync() {
             echo ""
             echo -e "  ${BOLD}Or to abort:${RESET}"
             echo "  git rebase --abort"
-            echo "  git branch -f $TRACKING_BRANCH $saved_tracking"
             echo ""
             echo -e "  ${DIM}Tip: git rerere is enabled, so resolved conflicts are remembered"
             echo -e "  for next time. You only solve each conflict once!${RESET}"
@@ -1227,7 +1233,7 @@ cmd_status() {
             local short_hash subject files_count
             short_hash=$(git rev-parse --short "$hash")
             subject=$(git log -1 --format="%s" "$hash")
-            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
+            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
 
             printf "  ${CYAN}%2d${RESET} %-50s ${DIM}%s  %d file(s)${RESET}\n" \
                 "$index" "$subject" "$short_hash" "$files_count"
@@ -1263,7 +1269,7 @@ cmd_status() {
 
     # rerere stats
     local rerere_count
-    rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+    rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$rerere_count" -gt 0 ]]; then
         dim "  rerere: $rerere_count recorded resolution(s) (conflicts auto-resolved on repeat)"
     fi
@@ -1346,6 +1352,7 @@ cmd_doctor() {
         if [[ "$patch_count" -eq 0 ]]; then
             _check "patch_stack" "pass" "no patches"
         else
+            trap 'git branch -D "bl-doctor-$$" &>/dev/null' EXIT
             local tmp_branch="bl-doctor-$$"
             git branch "$tmp_branch" "$PATCHES_BRANCH" 2>/dev/null
             local current_tracking
@@ -1361,6 +1368,7 @@ cmd_doctor() {
                 git checkout "$PATCHES_BRANCH" &>/dev/null || true
             fi
             git branch -D "$tmp_branch" &>/dev/null || true
+            trap - EXIT
         fi
     fi
 
@@ -1496,7 +1504,7 @@ WORKFLOW_EOF
     content="${content//BRANCH_PLACEHOLDER/$UPSTREAM_BRANCH}"
     content="${content//TRACKING_PLACEHOLDER/$TRACKING_BRANCH}"
     content="${content//PATCHES_PLACEHOLDER/$PATCHES_BRANCH}"
-    echo "$content" > "$output_file"
+    printf '%s\n' "$content" > "$output_file"
 
     if [[ "$JSON_MODE" == true ]]; then
         json_out '{"ok":true,"workflow":"'"$output_file"'","schedule":"'"$schedule_desc"'"}'
@@ -1546,12 +1554,16 @@ cmd_undo() {
     [[ "$JSON_MODE" != true ]] && header "Undo last sync"
     [[ "$JSON_MODE" != true ]] && echo ""
 
-    # Find previous state of patches branch
-    local prev_head
-    prev_head=$(git reflog "$PATCHES_BRANCH" --format="%H" -2 2>/dev/null | tail -1)
+    # Find previous state — prefer persisted file, fall back to reflog
+    local prev_head=""
+    if [[ -f .bingo/.undo-head ]]; then
+        prev_head=$(cat .bingo/.undo-head)
+    else
+        prev_head=$(git reflog "$PATCHES_BRANCH" --format="%H" -2 2>/dev/null | tail -1)
+    fi
 
     if [[ -z "$prev_head" ]]; then
-        fatal "No previous state found to undo."
+        fatal "No previous state found to undo. Have you synced yet?"
     fi
 
     local current_head
@@ -1587,6 +1599,7 @@ cmd_undo() {
         git branch -f "$TRACKING_BRANCH" "$prev_tracking" &>/dev/null
         rm -f .bingo/.undo-tracking
     fi
+    rm -f .bingo/.undo-head
 
     if [[ "$JSON_MODE" == true ]]; then
         json_out '{"ok":true,"restored_to":"'"$prev_head"'"}'
@@ -1639,7 +1652,7 @@ cmd_conflict_analyze() {
     fi
 
     local conflicted_files
-    conflicted_files=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+    conflicted_files=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
 
     if [[ -z "$conflicted_files" ]]; then
         if [[ "$JSON_MODE" == true ]]; then
@@ -1741,7 +1754,7 @@ cmd_json_status() {
             local short_hash subject files_count pname=""
             short_hash=$(git rev-parse --short "$hash")
             subject=$(git log -1 --format="%s" "$hash")
-            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l)
+            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
             [[ "$subject" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
             patch_data+="${pname}"$'\t'"${short_hash}"$'\t'"${subject}"$'\t'"${files_count}"$'\n'
         done <<< "$commits"
