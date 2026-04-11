@@ -636,9 +636,11 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
 # ─── MCP JSON-RPC Protocol ───────────────────────────────────────────────────
 
+_PARSE_ERROR = object()  # Sentinel: bad message, but not EOF
+
 def read_message() -> dict | None:
-    """Read a JSON-RPC message from stdin (MCP stdio transport)."""
-    # MCP stdio uses Content-Length headers (like LSP)
+    """Read a JSON-RPC message from stdin (MCP stdio transport).
+    Returns dict on success, None on EOF, _PARSE_ERROR on bad input."""
     headers = {}
     while True:
         line = sys.stdin.readline()
@@ -654,15 +656,15 @@ def read_message() -> dict | None:
     try:
         content_length = int(headers.get("content-length", 0))
     except (ValueError, TypeError):
-        return None
+        return _PARSE_ERROR
     if content_length == 0:
-        return None
+        return _PARSE_ERROR
 
     body = sys.stdin.read(content_length)
     try:
         return json.loads(body)
     except json.JSONDecodeError:
-        return None
+        return _PARSE_ERROR
 
 
 def send_message(msg: dict):
@@ -687,7 +689,9 @@ def main():
     while True:
         msg = read_message()
         if msg is None:
-            break
+            break  # EOF — client disconnected
+        if msg is _PARSE_ERROR:
+            continue  # Skip malformed message, keep serving
 
         method = msg.get("method", "")
         id = msg.get("id")
@@ -712,7 +716,10 @@ def main():
         elif method == "tools/call":
             tool_name = params.get("name", "")
             arguments = params.get("arguments", {})
-            result = handle_tool_call(tool_name, arguments)
+            try:
+                result = handle_tool_call(tool_name, arguments)
+            except Exception as e:
+                result = {"content": [{"type": "text", "text": f"Internal error: {e}"}], "isError": True}
             send_message(make_response(id, result))
 
         elif method == "ping":

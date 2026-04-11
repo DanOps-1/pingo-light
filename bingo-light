@@ -1929,6 +1929,14 @@ cmd_patch_meta() {
 
     ensure_metadata
 
+    # Verify patch exists (unless just querying — metadata can exist for dropped patches)
+    local base
+    if base=$(patches_base 2>/dev/null); then
+        if ! git log --format="%s" "$base..$PATCHES_BRANCH" 2>/dev/null | grep -qF "$PATCH_PREFIX $target:"; then
+            fatal "Patch '${target}' not found."
+        fi
+    fi
+
     local action="" value=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -2057,6 +2065,15 @@ patch_reorder_noninteractive() {
 
     local base
     base=$(patches_base) || { fatal "No patches."; }
+
+    # Validate: number of indices must equal number of patches
+    local patch_total
+    patch_total=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
+    local index_count
+    index_count=$(echo "$order_str" | tr ',' '\n' | grep -c '[0-9]')
+    if [[ "$index_count" -ne "$patch_total" ]]; then
+        fatal "Reorder requires exactly $patch_total indices (one per patch), got $index_count."
+    fi
 
     [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
 
