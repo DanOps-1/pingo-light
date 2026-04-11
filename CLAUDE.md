@@ -1,98 +1,103 @@
-# bingo-light
+# CLAUDE.md
 
-AI-native fork maintenance tool. Single-file bash CLI + MCP server designed for LLM agents to manage upstream sync.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## AI-native features
+## What this project is
 
-- `--json` flag: structured JSON output on all commands
-- `--yes` / `-y` flag: fully non-interactive (no prompts)
-- Auto-detects non-TTY stdin → enables non-interactive mode automatically
-- `BINGO_DESCRIPTION` env var: set patch description without stdin
-- `conflict-analyze --json`: structured conflict info for AI resolution
-- MCP server: 27 tools including `bingo_conflict_resolve` (AI writes resolved content directly)
+bingo-light is an AI-native fork maintenance tool. It manages customizations as a clean patch stack on top of upstream, with `--json` and `--yes` flags for AI agent consumption. Single bash script (~2500 lines) + MCP server (Python 3, 27 tools).
 
-## For AI agents: prefer MCP or --json
-
-When helping users with fork maintenance, use the MCP tools or CLI with `--json --yes`:
+## Commands
 
 ```bash
-# AI-friendly: structured output, no prompts
-bingo-light status --json
-bingo-light sync --json --yes
-bingo-light conflict-analyze --json
-BINGO_DESCRIPTION="add feature X" bingo-light patch new feature-x --yes
+make test          # run core test suite (tests/test.sh)
+make lint          # shellcheck on bingo-light
+
+# Full test pipeline (178 tests across 4 suites):
+./tests/run-all.sh              # all suites + coverage report
+./tests/test.sh                 # core functional tests
+./tests/test-json.sh            # JSON fuzz with dangerous inputs
+./tests/test-edge.sh            # git state boundary tests
+python3 ./tests/test-mcp.py     # MCP protocol tests
+
+# Run a single test section (by number):
+# Not directly supported — run full suite. Tests take ~10s.
+
+# Syntax check without running:
+bash -n bingo-light
+python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)"
 ```
 
-## Project structure
+## Architecture
 
-- `bingo-light` — The entire tool (single bash script)
-- `mcp-server.py` — MCP server (zero-dep Python 3, 27 tools)
-- `agent.py` — Advisor agent (monitor + analyze + auto-sync-if-safe)
-- `tui.py` — Curses terminal dashboard
-- `install.sh` — Copies to /usr/local/bin
-- `llms.txt` — Complete reference for LLM consumption
-- `tests/test.sh` — 71 tests
-- `completions/` — bash/zsh/fish tab completion
+**bingo-light** (bash) — The entire CLI. All business logic lives here. Uses `set -euo pipefail`. Every command has two output paths: human-readable (default) and JSON (`--json` flag). JSON output uses `json_out()` + `json_escape()` (awk-based, POSIX-compatible). Config stored in `.bingolight` via `git config --file`.
 
-## MCP Server setup
+**mcp-server.py** (Python 3, stdlib only) — Thin MCP wrapper over the CLI. Calls `run_bl()` which spawns `bingo-light --json --yes` as a subprocess. Adds `--json --yes` to ALL commands automatically. Has `try/except` around `handle_tool_call()` to prevent crashes from bad input. Uses Content-Length framed JSON-RPC 2.0 over stdio.
 
-Add to `~/.claude/settings.json`:
-```json
-{
-  "mcpServers": {
-    "bingo-light": {
-      "command": "python3",
-      "args": ["/home/kali/bingo-light/mcp-server.py"]
-    }
-  }
-}
+**agent.py** — Advisor agent. Observe → Analyze → Safe-act or Report. LLM is used for analysis ONLY, never code execution. Can run without API key (graceful degradation).
+
+**tui.py** — Curses dashboard. Read-only status viewer with sync/dry-run.
+
+## Critical patterns to follow when editing
+
+**JSON output**: Every `json_out` call with a user-controlled variable MUST use `json_escape`:
+```bash
+# CORRECT:
+json_out '{"ok":true,"name":"'"$(echo "$name" | json_escape)"'"}'
+# WRONG (injection risk):
+json_out '{"ok":true,"name":"'"$name"'"}'
+```
+Only exception: known integers (`$behind`, `$count`) and controlled constants (`$TRACKING_BRANCH`).
+
+**JSON mode guard**: Every function that produces output MUST have a JSON mode path. No function should return 0 with empty stdout when `JSON_MODE=true`.
+
+**Git output suppression**: All `git checkout`, `git branch -f`, `git commit`, `git rebase`, `git am` calls MUST use `&>/dev/null` to prevent stdout leaking into JSON output.
+
+**No shell interpolation in python3 -c**: Pass data via stdin, not `$VAR` in the Python string:
+```bash
+# CORRECT:
+printf '%s' "$var" | python3 -c "import sys; data=sys.stdin.read()"
+# WRONG:
+python3 -c "data='$var'"
 ```
 
-## MCP Tools (27)
+**awk must be POSIX**: No gawk extensions. No 3-argument `match(s, r, array)`. Use `match()` + `substr()` + `sub()`.
 
-| Tool | Purpose |
-|------|---------|
-| `bingo_status` | JSON status: behind count, patches, conflict risk |
-| `bingo_init` | Initialize fork tracking |
-| `bingo_sync` | Rebase patches onto latest upstream |
-| `bingo_undo` | Undo last sync |
-| `bingo_patch_new` | Create named patch |
-| `bingo_patch_list` | List patch stack |
-| `bingo_patch_show` | Show patch diff |
-| `bingo_patch_drop` | Remove patch |
-| `bingo_patch_export` | Export as .patch files |
-| `bingo_patch_import` | Import .patch files |
-| `bingo_patch_meta` | Get/set patch metadata (reason, tags, expires) |
-| `bingo_patch_squash` | Squash two patches into one |
-| `bingo_patch_reorder` | Reorder patches non-interactively |
-| `bingo_doctor` | Diagnostic check |
-| `bingo_diff` | Total diff vs upstream |
-| `bingo_auto_sync` | Generate GitHub Actions workflow |
-| `bingo_conflict_analyze` | Structured conflict info (ours/theirs/hints) |
-| `bingo_conflict_resolve` | Write resolved content, stage, continue rebase |
-| `bingo_config` | Get/set/list configuration |
-| `bingo_history` | Sync history with hash mappings |
-| `bingo_test` | Run configured test suite |
-| `bingo_workspace_status` | Multi-repo workspace overview |
-| `bingo_patch_edit` | Amend an existing patch |
-| `bingo_workspace_init` | Initialize multi-repo workspace |
-| `bingo_workspace_add` | Add a repo to workspace |
-| `bingo_workspace_sync` | Sync all workspace repos |
-| `bingo_workspace_list` | List workspace repos |
+**Conflict detection**: Use `git ls-files --unmerged | cut -f2 | sort -u`, NOT `git diff --name-only --diff-filter=U` (misses delete/modify and rename conflicts).
 
-All tools require `cwd` parameter.
+**Undo state**: sync saves `.bingo/.undo-head` + `.bingo/.undo-tracking`. Undo writes `.bingo/.undo-active` to prevent `_fix_stale_tracking()` from auto-advancing tracking. Sync clears `.undo-active`.
 
 ## Key internals
 
 - Config: `.bingolight` (git-config format), excluded via `.git/info/exclude`
 - Patch ID: commit messages matching `[bl] <name>: <desc>`
-- JSON mode: `--json` suppresses all human-readable output, emits single JSON object
-- Non-interactive: `--yes` or non-TTY stdin auto-confirms all prompts
-- MCP server: JSON-RPC 2.0 over stdio, Python 3 stdlib only
+- Patch names: validated to `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`
+- Branches: `upstream-tracking` (mirror), `bingo-patches` (patches on top)
+- MCP server version must match CLI VERSION (currently 1.2.0)
+- `_fix_stale_tracking()`: auto-repairs tracking branch after manual conflict resolution, skipped if `.bingo/.undo-active` exists or rebase is in progress
 
-## Development
+## When adding a new command
+
+1. Add the function in `bingo-light`
+2. Add JSON output path with `json_out` + proper escaping
+3. Add to `show_help()` function
+4. Add to `main()` dispatch
+5. Add to all 3 shell completions (`completions/*.bash`, `.zsh`, `.fish`)
+6. Add to `llms.txt` command reference
+7. Update README.md and README.zh-CN.md if user-facing
+
+## When adding a new MCP tool
+
+1. Add tool definition to `TOOLS` array in `mcp-server.py`
+2. Add handler in `handle_tool_call()`
+3. `run_bl()` auto-adds `--json --yes` — don't add them manually
+4. Update MCP tool tables in README.md, README.zh-CN.md, CLAUDE.md
+5. Update badge count if it changed
+
+## For AI agents: prefer MCP or --json
 
 ```bash
-make test    # run test suite
-make lint    # shellcheck
+bingo-light status --json
+bingo-light sync --json --yes
+bingo-light conflict-analyze --json
+BINGO_DESCRIPTION="add feature X" bingo-light patch new feature-x --yes
 ```
