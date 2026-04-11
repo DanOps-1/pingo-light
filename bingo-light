@@ -1720,14 +1720,28 @@ cmd_conflict_analyze() {
             local conflict_count
             conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
 
+            # Detect conflict type and generate merge hint for AI
+            local merge_hint="Merge both changes. Keep ours (upstream) and theirs (your patch)."
+            if [[ -z "$ours" && -n "$theirs" ]]; then
+                merge_hint="Upstream deleted content that your patch modifies. Decide: keep your version or accept upstream deletion."
+            elif [[ -n "$ours" && -z "$theirs" ]]; then
+                merge_hint="Your patch deleted content that upstream modified. Decide: keep upstream changes or accept your deletion."
+            elif [[ "$conflict_count" -gt 1 ]]; then
+                merge_hint="Multiple conflict regions. Resolve each <<<<<<< ... >>>>>>> block independently. Usually: keep both additions, reconcile edits."
+            fi
+
             json+='{"file":"'"$(echo "$file" | json_escape)"'","conflict_count":'"$conflict_count"','
-            json+='"ours":"'"$ours"'","theirs":"'"$theirs"'"}'
+            json+='"ours":"'"$ours"'","theirs":"'"$theirs"'","merge_hint":"'"$(echo "$merge_hint" | json_escape)"'"}'
         done <<< "$conflicted_files"
 
         json+='],'
-        json+='"resolution_hints":["Edit conflicted files to remove <<<<<<< ======= >>>>>>> markers",'
-        json+='"Run: git add <files> && git rebase --continue",'
-        json+='"To abort: git rebase --abort"]}'
+        json+='"resolution_steps":['
+        json+='"1. Read ours (upstream) and theirs (your patch) for each conflict",'
+        json+='"2. Write the merged file content (include both changes where possible)",'
+        json+='"3. Run: git add <conflicted-files>",'
+        json+='"4. Run: git rebase --continue",'
+        json+='"5. If more conflicts appear, repeat from step 1",'
+        json+='"6. To abort instead: git rebase --abort"]}'
 
         json_out "$json"
     else
@@ -1835,11 +1849,33 @@ for line in patch_lines.split('\n'):
 
 overlap = [f for f in overlap_text.split('\n') if f.strip()]
 
+in_reb = in_rebase == 'true'
+risk = len(overlap) > 0
+up2date = behind == 0
+
+# Compute recommended action for AI decision-making
+if in_reb:
+    action = 'resolve_conflict'
+    reason = 'Rebase in progress. Run conflict-analyze to see conflicts, resolve them, then git add + git rebase --continue.'
+elif up2date:
+    action = 'up_to_date'
+    reason = 'Fork is in sync with upstream. No action needed.'
+elif behind > 0 and not risk:
+    action = 'sync_safe'
+    reason = f'{behind} commits behind. No file overlap detected. Safe to sync.'
+elif behind > 0 and risk:
+    action = 'sync_risky'
+    reason = f'{behind} commits behind. {len(overlap)} file(s) overlap with your patches — conflicts likely. Run sync --dry-run first.'
+else:
+    action = 'unknown'
+    reason = 'Check status manually.'
+
 result = {
     'ok': True, 'upstream_url': url, 'upstream_branch': branch,
     'current_branch': cur_branch, 'behind': behind, 'patch_count': pcount,
     'patches': patches, 'conflict_risk': overlap,
-    'in_rebase': in_rebase == 'true', 'up_to_date': behind == 0
+    'in_rebase': in_reb, 'up_to_date': up2date,
+    'recommended_action': action, 'reason': reason
 }
 print(json.dumps(result))
 " 2>/dev/null || json_out '{"ok":false,"error":"json build failed"}'
