@@ -17,50 +17,43 @@ Response includes `recommended_action`:
 
 ## Sync Flow
 
-### Safe sync (no conflict risk)
+### Use smart-sync (preferred — one call does everything)
 ```bash
-bingo-light sync --json --yes
-# Response: {"ok":true,"synced":true,"behind_before":N,"patches_rebased":N}
+bingo-light smart-sync --json --yes
 ```
 
-### Risky sync (conflict risk detected)
-```bash
-# Step 1: dry-run
-bingo-light sync --dry-run --json --yes
-# If clean=true → proceed with real sync
-# If clean=false → sync anyway (conflicts will be caught)
+Responses:
+- `{"ok":true, "action":"none"}` → Already up to date
+- `{"ok":true, "action":"synced", "conflicts_resolved":0}` → Clean sync
+- `{"ok":true, "action":"synced_with_rerere", "conflicts_auto_resolved":N}` → Conflicts auto-resolved by rerere
+- `{"ok":false, "action":"needs_human", "remaining_conflicts":[...]}` → Needs manual resolution (see below)
 
-# Step 2: sync
-bingo-light sync --json --yes
-# If ok=true → done
-# If ok=false, conflict=true → go to Conflict Resolution
+### When smart-sync returns needs_human
+
+The response includes `remaining_conflicts` with full context:
+```json
+{
+  "remaining_conflicts": [
+    {"file": "app.py", "ours": "upstream code", "theirs": "your code", "merge_hint": "Keep both"}
+  ],
+  "resolution_steps": ["1. Read ours/theirs", "2. Write merged", "3. git add", "4. git rebase --continue"]
+}
 ```
 
-## Conflict Resolution
+For each conflict:
+1. Read the `merge_hint` — it tells you the strategy
+2. Read the actual file (has <<<<<<< ======= >>>>>>> markers)
+3. Write the merged version (usually: keep BOTH changes)
+4. `git add <file>`
+5. `git rebase --continue`
+6. Run `bingo-light status --json` to verify
 
-When sync returns `conflict=true`:
-
+### Fallback: manual sync (for fine-grained control)
 ```bash
-# Step 1: Analyze
-bingo-light conflict-analyze --json
-# Returns: conflicts[{file, ours, theirs, merge_hint, conflict_count}]
-# ours = upstream version, theirs = your patch version
-# merge_hint = AI guidance on how to resolve
+bingo-light sync --dry-run --json --yes   # Preview
+bingo-light sync --json --yes             # Execute
+bingo-light conflict-analyze --json       # If conflict
 ```
-
-```bash
-# Step 2: For each conflicted file, read the merge_hint and:
-#   - Read the full file (it has <<<<<<< ======= >>>>>>> markers)
-#   - Write the resolved version (usually: keep BOTH changes)
-#   - git add <file>
-
-# Step 3: Continue rebase
-git rebase --continue
-# If more conflicts → repeat from Step 1
-# If done → run status to verify
-```
-
-**Resolution strategy**: Almost always, you should keep BOTH upstream and patch changes. The upstream added something, your patch added something — merge them. Only edit-vs-edit on the same lines requires judgment.
 
 ## Patch Management
 

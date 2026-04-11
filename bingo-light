@@ -1201,6 +1201,132 @@ cmd_sync() {
     fi
 }
 
+# ─── Command: smart-sync (AI-native: one call does the entire sync+resolve cycle) ──
+
+cmd_smart_sync() {
+    load_config
+    ensure_clean_tree
+
+    # Step 1: Fetch and check
+    git fetch upstream 2>/dev/null || fatal "Failed to fetch upstream."
+    local tracking_head upstream_head
+    tracking_head=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null)
+    upstream_head=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null)
+
+    if [[ "$tracking_head" == "$upstream_head" ]]; then
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"action":"none","message":"Already up to date.","behind":0,"patches":'"$(count_patches)"'}'
+        else
+            success "Already up to date with upstream."
+        fi
+        return 0
+    fi
+
+    local behind
+    behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH")
+    local patch_count
+    patch_count=$(count_patches)
+
+    info "Smart sync: $behind commits behind, $patch_count patches."
+
+    # Step 2: Save state for rollback
+    local saved_head saved_tracking
+    saved_head=$(git rev-parse HEAD)
+    saved_tracking=$(git rev-parse "$TRACKING_BRANCH")
+    mkdir -p .bingo
+    echo "$saved_head" > .bingo/.undo-head
+    echo "$saved_tracking" > .bingo/.undo-tracking
+    rm -f .bingo/.undo-active
+
+    # Step 3: Update tracking
+    git branch -f "$TRACKING_BRANCH" "upstream/$UPSTREAM_BRANCH" &>/dev/null
+    [[ "$(current_branch)" == "$PATCHES_BRANCH" ]] || git checkout "$PATCHES_BRANCH" &>/dev/null
+
+    # Step 4: Attempt rebase
+    local rebase_output conflicts_resolved=0 max_resolve=20 resolve_iter=0
+    if rebase_output=$(git rebase --onto "$TRACKING_BRANCH" "$saved_tracking" "$PATCHES_BRANCH" 2>&1); then
+        # Clean rebase — done!
+        [[ "$JSON_MODE" != true ]] && echo "$rebase_output"
+        record_sync_history "$(pwd)" "$behind" "$(git rev-parse --short "$saved_tracking" 2>/dev/null)" 2>/dev/null || true
+        if [[ "$JSON_MODE" == true ]]; then
+            json_out '{"ok":true,"action":"synced","behind_before":'"$behind"',"patches_rebased":'"$patch_count"',"conflicts_resolved":0}'
+        else
+            success "Smart sync complete! $patch_count patch(es) rebased cleanly."
+        fi
+        return 0
+    fi
+
+    # Step 5: Rebase failed — enter conflict resolution loop
+    [[ "$JSON_MODE" != true ]] && echo "$rebase_output"
+    info "Conflicts detected. Attempting auto-resolution..."
+
+    local conflict_log="["
+    local cf_first=true
+
+    while [[ -d .git/rebase-merge || -d .git/rebase-apply ]]; do
+        resolve_iter=$((resolve_iter + 1))
+        if [[ $resolve_iter -gt $max_resolve ]]; then
+            git rebase --abort &>/dev/null || true
+            git branch -f "$TRACKING_BRANCH" "$saved_tracking" &>/dev/null || true
+            fatal "Smart sync: exceeded $max_resolve resolution attempts. Aborting."
+        fi
+
+        # Check for unresolved conflicts
+        local unresolved
+        unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+
+        if [[ -z "$unresolved" ]]; then
+            # rerere resolved everything in this step
+            if GIT_EDITOR=true git rebase --continue &>/dev/null; then
+                conflicts_resolved=$((conflicts_resolved + 1))
+                continue  # May have more patches to apply
+            fi
+            # Continue failed — check for new conflicts
+            unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+            [[ -z "$unresolved" ]] && continue
+        fi
+
+        # Real unresolved conflicts — report what we have and stop
+        git branch -f "$TRACKING_BRANCH" "$saved_tracking" &>/dev/null || true
+
+        if [[ "$JSON_MODE" == true ]]; then
+            # Build conflict details
+            local cf_json="["
+            local first_cf=true
+            while IFS= read -r file; do
+                [[ -z "$file" ]] && continue
+                [[ "$first_cf" == true ]] && first_cf=false || cf_json+=","
+                local ours theirs conflict_count merge_hint
+                ours=$(sed -n '/^<<<<<<</,/^=======/{ /^<<<<<<</d; /^=======/d; p; }' "$file" 2>/dev/null | sed '/^|||||||/,$d' | json_escape)
+                theirs=$(sed -n '/^=======/,/^>>>>>>>/{ /^=======/d; /^>>>>>>>/d; p; }' "$file" 2>/dev/null | json_escape)
+                conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
+                merge_hint="Merge both changes. Keep ours (upstream) and theirs (your patch)."
+                cf_json+='{"file":"'"$(echo "$file" | json_escape)"'","ours":"'"$ours"'","theirs":"'"$theirs"'","conflict_count":'"$conflict_count"',"merge_hint":"'"$(echo "$merge_hint" | json_escape)"'"}'
+            done <<< "$unresolved"
+            cf_json+="]"
+
+            json_out '{"ok":false,"action":"needs_human","behind_before":'"$behind"',"conflicts_auto_resolved":'"$conflicts_resolved"',"remaining_conflicts":'"$cf_json"',"resolution_steps":["1. Read ours/theirs for each conflict","2. Write merged content to the file","3. git add <file>","4. git rebase --continue","5. Run bingo-light status to verify"],"abort_cmd":"git rebase --abort"}'
+        else
+            warn "Smart sync: $conflicts_resolved conflict(s) auto-resolved, but manual resolution needed."
+            echo ""
+            echo "  Conflicted files:"
+            echo "$unresolved" | while read -r f; do echo -e "    ${RED}${f}${RESET}"; done
+            echo ""
+            echo "  Resolve, then: git add <files> && git rebase --continue"
+            echo "  Or abort:      git rebase --abort"
+        fi
+        return 1
+    done
+
+    # If we get here, all conflicts were auto-resolved by rerere
+    record_sync_history "$(pwd)" "$behind" "$(git rev-parse --short "$saved_tracking" 2>/dev/null)" 2>/dev/null || true
+    if [[ "$JSON_MODE" == true ]]; then
+        json_out '{"ok":true,"action":"synced_with_rerere","behind_before":'"$behind"',"patches_rebased":'"$patch_count"',"conflicts_auto_resolved":'"$conflicts_resolved"'}'
+    else
+        success "Smart sync complete! $conflicts_resolved conflict(s) auto-resolved by rerere."
+    fi
+}
+
 # ─── Command: status ──────────────────────────────────────────────────────────
 
 cmd_status() {
@@ -2458,6 +2584,7 @@ EOF
     echo ""
     echo -e "  ${BOLD}Sync with Upstream:${RESET}"
     echo -e "    ${CYAN}sync${RESET} [--dry-run] [--force] [--test]  Rebase patches onto latest upstream"
+    echo -e "    ${CYAN}smart-sync${RESET}                      One-shot sync: auto-resolves conflicts via rerere"
     echo -e "    ${CYAN}undo${RESET}                            Undo last sync"
     echo ""
     echo -e "  ${BOLD}Monitoring:${RESET}"
@@ -2505,6 +2632,7 @@ main() {
         init)               cmd_init "$@" ;;
         patch|p)            cmd_patch "$@" ;;
         sync|s)             cmd_sync "$@" ;;
+        smart-sync)         cmd_smart_sync "$@" ;;
         status|st)          cmd_status "$@" ;;
         doctor)             cmd_doctor "$@" ;;
         auto-sync)          cmd_autosync "$@" ;;

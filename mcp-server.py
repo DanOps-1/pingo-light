@@ -434,6 +434,22 @@ TOOLS = [
         "description": "List all repositories in the workspace.",
         "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}}, "required": ["cwd"]}
     },
+    {
+        "name": "bingo_smart_sync",
+        "description": (
+            "ONE-SHOT SYNC: Fetches upstream, rebases all patches, and auto-resolves conflicts "
+            "via rerere — all in a single call. Returns synced result or remaining conflicts with "
+            "ours/theirs/merge_hint for each. USE THIS instead of bingo_sync when you want the "
+            "simplest possible sync flow. Only calls you back if rerere can't auto-resolve."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Path to the git repository"}
+            },
+            "required": ["cwd"]
+        }
+    },
 ]
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
@@ -631,6 +647,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_bl(["workspace", "sync"], cwd)
     elif name == "bingo_workspace_list":
         return run_bl(["workspace", "list"], cwd)
+
+    elif name == "bingo_smart_sync":
+        return run_bl(["smart-sync"], cwd)
 
     else:
         return {
