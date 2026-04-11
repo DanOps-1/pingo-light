@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 CONFIG_FILE=".bingolight"
 PATCH_PREFIX="[bl]"
 MAX_PATCHES=100
@@ -1742,11 +1742,12 @@ cmd_patch_meta() {
     if [[ -z "$action" ]]; then
         # Show metadata for this patch
         local meta
-        meta=$(echo "$target" | python3 -c "
+        meta=$(printf '%s\n%s' "$target" "$METADATA_FILE" | python3 -c "
 import json, sys
-target = sys.stdin.read().strip()
+lines = sys.stdin.read().strip().split('\n')
+target, path = lines[0], lines[1]
 try:
-    with open('$METADATA_FILE') as f: data = json.load(f)
+    with open(path) as f: data = json.load(f)
 except: data = {'patches': {}}
 p = data.get('patches', {}).get(target, {})
 if not p: p = {'reason':'','tags':[],'expires':None,'upstream_pr':'','status':'permanent'}
@@ -1766,11 +1767,10 @@ for k, v in d.items():
         fi
     else
         # Set metadata (data passed via stdin, not shell interpolation)
-        printf '%s\n%s\n%s\n%s' "$target" "$action" "$value" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | python3 -c "
+        printf '%s\n%s\n%s\n%s\n%s' "$target" "$action" "$value" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$METADATA_FILE" | python3 -c "
 import json, sys, os
 lines = sys.stdin.read().strip().split('\n')
-target, action, value, ts = lines[0], lines[1], lines[2], lines[3]
-path = '$METADATA_FILE'
+target, action, value, ts, path = lines[0], lines[1], lines[2], lines[3], lines[4]
 data = {'patches': {}}
 if os.path.exists(path):
     with open(path) as f: data = json.load(f)
@@ -1852,9 +1852,9 @@ patch_reorder_noninteractive() {
     # Generate a GIT_SEQUENCE_EDITOR script that reorders pick lines
     local editor_script
     editor_script=$(mktemp)
-    python3 -c "
+    printf '%s' "$order_str" | python3 -c "
 import sys
-order = [int(x.strip()) for x in '$order_str'.split(',')]
+order = [int(x.strip()) for x in sys.stdin.read().strip().split(',')]
 lines = []
 for i, idx in enumerate(order):
     lines.append(f'line{i}=\$(sed -n \"{idx}p\" \"\$1\")')
@@ -1912,22 +1912,28 @@ record_sync_history() {
         mapping+="]"
     fi
 
-    python3 -c "
-import json, os
-path = '$SYNC_HISTORY_FILE'
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n%s' \
+        "$SYNC_HISTORY_FILE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$upstream_before" "$upstream_after" "$behind" "" \
+        "$mapping" | python3 -c "
+import json, sys, os
+header, mapping_json = sys.stdin.read().split('\n', 1)
+fields = header.strip().split('\t')
+path, ts, ub, ua, behind = fields[0], fields[1], fields[2], fields[3], int(fields[4])
+patches = json.loads(mapping_json.strip()) if mapping_json.strip() else []
 data = {'syncs': []}
 if os.path.exists(path):
     with open(path) as f: data = json.load(f)
 data['syncs'].append({
-    'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
-    'upstream_before': '$upstream_before',
-    'upstream_after': '$upstream_after',
-    'upstream_commits_integrated': $behind,
-    'patches': $mapping
+    'timestamp': ts, 'upstream_before': ub, 'upstream_after': ua,
+    'upstream_commits_integrated': behind, 'patches': patches
 })
-# Keep last 50 syncs
 data['syncs'] = data['syncs'][-50:]
-with open(path, 'w') as f: json.dump(data, f, indent=2)
+import tempfile
+tmp = tempfile.NamedTemporaryFile(mode='w', dir=os.path.dirname(path) or '.', delete=False, suffix='.tmp')
+json.dump(data, tmp, indent=2)
+tmp.close()
+os.replace(tmp.name, path)
 " 2>/dev/null || true
 }
 
@@ -1952,9 +1958,9 @@ cmd_history() {
     header "Sync History"
     echo ""
 
-    python3 -c "
-import json
-with open('$SYNC_HISTORY_FILE') as f: data = json.load(f)
+    printf '%s' "$SYNC_HISTORY_FILE" | python3 -c "
+import json, sys
+with open(sys.stdin.read().strip()) as f: data = json.load(f)
 for s in reversed(data.get('syncs', [])[-10:]):
     ts = s.get('timestamp', '?')[:16]
     n = s.get('upstream_commits_integrated', 0)
@@ -2020,14 +2026,19 @@ cmd_workspace() {
             local alias="${2:-$(basename "$repo_path")}"
             [[ -f "$WORKSPACE_CONFIG" ]] || { fatal "Run 'bingo-light workspace init' first."; }
 
-            python3 -c "
-import json
-with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+            printf '%s\n%s\n%s' "$WORKSPACE_CONFIG" "$repo_path" "$alias" | python3 -c "
+import json, sys, os, tempfile
+lines = sys.stdin.read().strip().split('\n')
+cfg, rpath, alias = lines[0], lines[1], lines[2]
+with open(cfg) as f: data = json.load(f)
 repos = data.setdefault('repos', [])
-if not any(r['path'] == '$repo_path' for r in repos):
-    repos.append({'path': '$repo_path', 'alias': '$alias'})
-with open('$WORKSPACE_CONFIG', 'w') as f: json.dump(data, f, indent=2)
-print('OK Added: $alias ($repo_path)')
+if not any(r['path'] == rpath for r in repos):
+    repos.append({'path': rpath, 'alias': alias})
+tmp = tempfile.NamedTemporaryFile(mode='w', dir=os.path.dirname(cfg), delete=False, suffix='.tmp')
+json.dump(data, tmp, indent=2)
+tmp.close()
+os.replace(tmp.name, cfg)
+print(f'OK Added: {alias} ({rpath})')
 " 2>/dev/null
             ;;
         status)
@@ -2044,9 +2055,9 @@ print('OK Added: $alias ($repo_path)')
                     # Run in subshell with cd
                     st=$(cd "$path" 2>/dev/null && "$0" --json --yes status 2>/dev/null < /dev/null) || st='{"ok":false}'
                     results+='{"alias":"'"$alias"'","path":"'"$path"'","status":'"$st"'}'
-                done < <(python3 -c "
-import json
-with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+                done < <(printf '%s' "$WORKSPACE_CONFIG" | python3 -c "
+import json, sys
+with open(sys.stdin.read().strip()) as f: data = json.load(f)
 for r in data.get('repos', []):
     print(f\"{r['path']}|{r['alias']}\")
 " 2>/dev/null)
@@ -2072,9 +2083,9 @@ for r in data.get('repos', []):
                     [[ "$risk" == "0" ]] && risk_str="${GREEN}none${RESET}"
 
                     printf "  %-20s %-8s %-8s %b\n" "$alias" "$behind" "$patches" "$risk_str"
-                done < <(python3 -c "
-import json
-with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+                done < <(printf '%s' "$WORKSPACE_CONFIG" | python3 -c "
+import json, sys
+with open(sys.stdin.read().strip()) as f: data = json.load(f)
 for r in data.get('repos', []):
     print(f\"{r['path']}|{r['alias']}\")
 " 2>/dev/null)
@@ -2096,9 +2107,9 @@ for r in data.get('repos', []):
                 else
                     warn "    failed"
                 fi
-            done < <(python3 -c "
-import json
-with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+            done < <(printf '%s' "$WORKSPACE_CONFIG" | python3 -c "
+import json, sys
+with open(sys.stdin.read().strip()) as f: data = json.load(f)
 for r in data.get('repos', []):
     print(f\"{r['path']}|{r['alias']}\")
 " 2>/dev/null)
@@ -2109,9 +2120,9 @@ for r in data.get('repos', []):
             if [[ "$JSON_MODE" == true ]]; then
                 cat "$WORKSPACE_CONFIG"
             else
-                python3 -c "
-import json
-with open('$WORKSPACE_CONFIG') as f: data = json.load(f)
+                printf '%s' "$WORKSPACE_CONFIG" | python3 -c "
+import json, sys
+with open(sys.stdin.read().strip()) as f: data = json.load(f)
 for r in data.get('repos', []):
     print(f\"  {r['alias']:20s} {r['path']}\")
 " 2>/dev/null

@@ -2,16 +2,29 @@
 
 ## Install
 
+### Interactive installer (recommended)
+
 ```bash
-# Option 1: Direct copy
-sudo cp bingo-light /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+```
 
-# Option 2: Make install
-make install
+Sets up: CLI, shell completions (bash/zsh/fish), MCP server, and the `/bingo` AI skill.
 
-# Option 3: Just use from the repo
+### Other methods
+
+```bash
+# From source
+git clone https://github.com/DanOps-1/bingo-light.git
+cd bingo-light && make install
+
+# Manual
+sudo cp bingo-light /usr/local/bin/ && chmod +x /usr/local/bin/bingo-light
+
+# Just use from the repo
 ./bingo-light --help
 ```
+
+**Requirements:** bash 4.0+, git 2.20+, Python 3.8+ (for MCP server only)
 
 ## 5-Minute Quickstart
 
@@ -19,7 +32,7 @@ make install
 # 1. You have a forked project
 cd my-forked-project
 
-# 2. Initialize bingo-light (point to the original repo)
+# 2. Initialize (point to the original repo)
 bingo-light init https://github.com/original/project.git
 
 # 3. Make your customizations
@@ -47,7 +60,8 @@ BINGO_DESCRIPTION="add feature" bingo-light patch new feat --yes
 
 ## MCP Integration
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` or `.mcp.json`:
+
 ```json
 {
   "mcpServers": {
@@ -58,3 +72,11 @@ Add to `~/.claude/settings.json`:
   }
 }
 ```
+
+22 MCP tools are available. See the [README](../README.md#mcp-server) for the full list.
+
+## Next steps
+
+- [Concepts](concepts.md) -- branch model, patch stack, sync flow
+- [Configuration](../README.md#configuration) -- hooks, test integration, workspace
+- [FAQ](../README.md#faq) -- common questions

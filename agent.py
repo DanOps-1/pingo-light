@@ -39,7 +39,7 @@ RETRY_BASE_DELAY = 2
 
 # ─── Infra: CLI + Git + LLM ──────────────────────────────────────────────────
 
-def run_pingo(args: list[str], cwd: str) -> dict:
+def run_bl(args: list[str], cwd: str) -> dict:
     """Run bingo-light with --json --yes and return parsed result."""
     cmd = [BINGO_BIN, "--json", "--yes"] + args
     env = {**os.environ, "NO_COLOR": "1"}
@@ -381,7 +381,7 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
 
     # ── 1. OBSERVE ────────────────────────────────────────────────────────
     log("OBSERVE: checking fork status...")
-    status = run_pingo(["status"], cwd)
+    status = run_bl(["status"], cwd)
 
     if not status.get("ok"):
         save_state(cwd, state)
@@ -435,7 +435,7 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
     if not any_risk and not full_report:
         # SAFE: no overlap, auto-sync
         log("SAFE-ACT: no conflict risk, syncing...")
-        bingo_result = run_pingo(["sync"], cwd)
+        bingo_result = run_bl(["sync"], cwd)
         raw = bingo_result.get("raw", "")
 
         if bingo_result.get("ok") or "Sync complete" in raw or "up to date" in raw.lower():
@@ -457,13 +457,13 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
     elif any_risk and not full_report:
         # RISKY: try dry-run first
         log("CAUTION: overlap detected, testing with dry-run...")
-        dry_result = run_pingo(["sync", "--dry-run"], cwd)
+        dry_result = run_bl(["sync", "--dry-run"], cwd)
         dry_raw = dry_result.get("raw", "")
 
         if "succeed cleanly" in dry_raw.lower():
             # Dry-run passed! Safe to sync despite overlap
             log("  dry-run clean, syncing...")
-            bingo_result = run_pingo(["sync"], cwd)
+            bingo_result = run_bl(["sync"], cwd)
             raw = bingo_result.get("raw", "")
             if bingo_result.get("ok") or "Sync complete" in raw:
                 state["last_sync"] = datetime.now(timezone.utc).isoformat()
@@ -482,7 +482,7 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
             log("  dry-run confirms conflict. Will NOT sync. Generating report...")
 
             # Temporarily sync to get real conflict details, then abort
-            bingo_result = run_pingo(["sync"], cwd)
+            bingo_result = run_bl(["sync"], cwd)
             conflicts = analyze_conflict_details(cwd)
             llm_conflict_analysis = llm_explain_conflicts(conflicts, model)
             try:

@@ -1,236 +1,211 @@
-```
-        _                         _ _       _     _
-  _ __ (_)_ __   __ _  ___       | (_) __ _| |__ | |_
- | '_ \| | '_ \ / _` |/ _ \ ____| | |/ _` | '_ \| __|
- | |_) | | | | | (_| | (_) |____| | | (_| | | | | |_
- | .__/|_|_| |_|\__, |\___/     |_|_|\__, |_| |_|\__|
- |_|            |___/                 |___/
-```
+<p align="center">
+  <br>
+  <code>&nbsp;  _     _                         _ _       _     _    &nbsp;</code><br>
+  <code>&nbsp; | |__ (_)_ __   __ _  ___       | (_) __ _| |__ | |_  &nbsp;</code><br>
+  <code>&nbsp; | '_ \| | '_ \ / _` |/ _ \ ____| | |/ _` | '_ \| __| &nbsp;</code><br>
+  <code>&nbsp; | |_) | | | | | (_| | (_) |____| | | (_| | | | | |_  &nbsp;</code><br>
+  <code>&nbsp; |_.__/|_|_| |_|\__, |\___/     |_|_|\__, |_| |_|\__| &nbsp;</code><br>
+  <code>&nbsp;                |___/                 |___/             &nbsp;</code><br>
+  <br>
+  <strong>AI-native fork maintenance. Keep your patches. Stay in sync.</strong>
+  <br><br>
+  <a href="https://github.com/DanOps-1/bingo-light/actions"><img src="https://github.com/DanOps-1/bingo-light/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
+  <a href="#mcp-server"><img src="https://img.shields.io/badge/MCP-22_tools-blueviolet.svg" alt="MCP: 22 tools"></a>
+  <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/Made_with-Bash-1f425f.svg" alt="Bash"></a>
+  <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
+  <br><br>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![AI-native](https://img.shields.io/badge/AI--native-MCP%20%2B%20JSON-blueviolet.svg)](#why-ai-native)
-[![Bash](https://img.shields.io/badge/Made_with-Bash-1f425f.svg)](https://www.gnu.org/software/bash/)
-[![CI](https://github.com/DanOps-1/bingo-light/actions/workflows/ci.yml/badge.svg)](https://github.com/DanOps-1/bingo-light/actions)
-[![Version](https://img.shields.io/badge/Version-1.0.0-orange.svg)](bingo-light)
+You maintain a fork. You add features upstream doesn't have. Then upstream pushes 50 commits and your fork is stuck. **bingo-light fixes this** -- your patches live as a clean stack on top of upstream, and syncing is one command.
 
-**AI-native fork maintenance. One tool for agents to manage upstream sync.**
-
-**AI 原生的 Fork 维护工具 ---- 让大模型自主管理上游同步。**
+Built for **AI agents** (MCP server, structured JSON, non-interactive mode) and **humans** (single file, zero dependencies, just bash + git).
 
 ---
 
-## Why AI-native?
+## Table of Contents
 
-AI coding agents -- Claude Code, Aider, Cursor agents, custom pipelines -- are increasingly doing real work inside forked repositories. They add features, fix bugs, backport patches. But when upstream moves forward, the fork drifts, and nobody has a good answer for "how does the AI keep this fork in sync?"
+- [Quick Start](#quick-start)
+- [Demo](#demo)
+- [Installation](#installation)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [MCP Server](#mcp-server)
+- [Command Reference](#command-reference)
+- [Integration Guide](#integration-guide)
+- [Configuration](#configuration)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
 
-No existing tool is designed for an AI agent to manage fork maintenance end-to-end. The agent needs:
+---
 
-- **Structured output** it can parse (not human-formatted tables)
-- **Non-interactive mode** it can call without a TTY
-- **Conflict analysis** it can read as data, not as diff markers in a file
-- **Conflict resolution** it can write back through an API, not through an editor
-
-bingo-light is the bridge. The AI calls MCP tools, patches are managed as a clean stack, and upstream stays in sync -- including fully automated conflict resolution.
-
-```
-AI Agent                                    bingo-light
----------                                   -----------
-bingo_init(cwd, upstream_url)           --> Set up tracking
-bingo_patch_new(cwd, name, description) --> Create patch
-bingo_status(cwd)                       --> {"behind": 5, "conflict_risk": ["app.py"]}
-bingo_sync(cwd, dry_run=true)           --> Test rebase safely
-bingo_sync(cwd)                         --> Rebase patches onto upstream
-bingo_conflict_analyze(cwd)             --> {"conflicts": [{file, ours, theirs}]}
-bingo_conflict_resolve(cwd, file, content) --> Write fix, stage, continue rebase
-```
-
-The agent gets structured JSON at every step. No parsing `git status` output. No hoping `expect` scripts will handle prompts. No guessing where the conflict markers are.
-
-## Features
-
-### For AI agents (primary interface)
-
-- **MCP server** (`mcp-server.py`) -- 15 tools covering the full lifecycle from init to conflict resolution
-- **`--json` flag** -- every command returns structured JSON that agents parse reliably
-- **`--yes` flag** -- fully non-interactive mode; no prompts, no TTY required
-- **Auto-detects non-TTY** -- when called via pipe or subprocess, interactive prompts are suppressed automatically
-- **`BINGO_DESCRIPTION` env var** -- AI sets patch descriptions without needing stdin
-- **`conflict-analyze`** -- returns structured conflict data (file paths, ours/theirs content, conflict count, hints)
-- **`bingo_conflict_resolve`** -- AI writes resolved content directly through MCP; file is written, staged, and rebase continues
-
-### For humans (also works great)
-
-- **Single file, zero dependencies** -- just bash + git. Drop it in your PATH and go.
-- **Named patch stack** -- each customization is one atomic, named commit
-- **One-command sync** -- `bingo-light sync` fetches upstream and rebases your entire patch stack
-- **Dry-run sync** -- `sync --dry-run` tests on a temporary branch without touching anything
-- **Conflict memory** -- git rerere is auto-enabled; resolve a conflict once, never again
-- **Undo** -- `bingo-light undo` restores your patches branch to its pre-sync state
-- **Conflict prediction** -- `bingo-light status` warns about files both you and upstream changed
-- **Doctor** -- `bingo-light doctor` runs a full diagnostic with a test rebase
-- **Export / Import** -- share patches as `.patch` files (quilt-compatible `series` file included)
-- **Auto-sync CI** -- `bingo-light auto-sync` generates a GitHub Actions workflow with conflict alerting
-
-## Also works for humans
-
-You do not need an AI agent to use bingo-light. It works exactly as you would expect from a terminal:
+## Quick Start
 
 ```bash
+# Install
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+
+# Set up fork tracking
 cd my-forked-project
 bingo-light init https://github.com/original/project.git
 
-# Make changes, create a patch
-vim src/theme.py
-bingo-light patch new dark-mode
+# Make changes, create a named patch
+vim src/feature.py
+bingo-light patch new my-feature
 
-# Sync with upstream at any time
+# Sync with upstream (your patches rebase on top automatically)
 bingo-light sync
-
-# Check health
-bingo-light status
 ```
 
-The `--json` and `--yes` flags are purely additive. Without them, you get the same human-friendly output as always.
+That's it. Your patches are a clean stack on top of upstream. Sync as often as you want.
 
-## JSON Output Examples
+## Demo
 
-### `bingo-light status --json`
+### Fork status at a glance
 
+```
+$ bingo-light status
+
+  bingo-light status
+  ──────────────────────────────────────────
+
+    Upstream   https://github.com/original/project.git (main)
+    Behind     12 commits
+    Patches    3 in stack
+
+    #1  dark-mode       support dark color scheme          3 files
+    #2  api-cache       add Redis caching layer            5 files
+    #3  fix-logging     structured JSON logs               1 file
+
+    Conflict risk
+      src/config.py — modified by both upstream and patch #2
+```
+
+### One-command sync
+
+```
+$ bingo-light sync
+
+  Fetching upstream...
+  Upstream: 12 new commits
+  Rebasing 3 patches onto upstream...
+    [1/3] dark-mode .......... ok
+    [2/3] api-cache .......... ok
+    [3/3] fix-logging ........ ok
+  Sync complete. 3 patches rebased onto 12 upstream commits.
+```
+
+### AI gets structured JSON
+
+```
+$ bingo-light status --json
+```
 ```json
 {
-  "initialized": true,
-  "upstream": "https://github.com/original/project.git",
-  "upstream_branch": "main",
-  "behind": 5,
+  "ok": true,
+  "upstream_url": "https://github.com/original/project.git",
+  "behind": 12,
+  "patch_count": 3,
   "patches": [
-    {
-      "index": 1,
-      "name": "dark-mode",
-      "hash": "a3f7c21",
-      "description": "support dark color scheme",
-      "insertions": 84,
-      "deletions": 12,
-      "files_changed": 3
-    }
+    {"name": "dark-mode", "hash": "a3f7c21", "subject": "support dark color scheme", "files": 3},
+    {"name": "api-cache", "hash": "b8e2d4f", "subject": "add Redis caching layer", "files": 5}
   ],
-  "conflict_risk": ["src/theme.py", "src/config.py"]
+  "conflict_risk": ["src/config.py"]
 }
 ```
 
-### `bingo-light conflict-analyze --json`
+### Conflict resolution (AI workflow)
 
+```
+$ bingo-light conflict-analyze --json
+```
 ```json
 {
   "rebase_in_progress": true,
-  "current_patch": "dark-mode",
+  "current_patch": "api-cache",
   "conflicts": [
     {
-      "file": "src/theme.py",
+      "file": "src/config.py",
       "conflict_count": 2,
-      "ours": "... upstream version of conflicting section ...",
-      "theirs": "... your patch version of conflicting section ...",
-      "hint": "Upstream refactored the Theme class; your dark-mode additions need to target the new class structure."
+      "ours": "... upstream version ...",
+      "theirs": "... your patch version ...",
+      "hint": "Upstream refactored Config class; patch needs to target new structure."
     }
   ]
 }
 ```
 
-## MCP Server Setup
+## Installation
 
-bingo-light ships with `mcp-server.py` -- a zero-dependency Python 3 MCP server that exposes all 15 tools over stdio (JSON-RPC 2.0).
-
-### Claude Code
-
-Add to your project's `.mcp.json` or `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "bingo-light": {
-      "command": "python3",
-      "args": ["/path/to/bingo-light/mcp-server.py"]
-    }
-  }
-}
-```
-
-Then in Claude Code, the agent can call `bingo_status`, `bingo_sync`, `bingo_conflict_analyze`, etc. directly as MCP tools.
-
-### Claude Desktop
-
-Add to your Claude Desktop MCP config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "bingo-light": {
-      "command": "python3",
-      "args": ["/path/to/bingo-light/mcp-server.py"]
-    }
-  }
-}
-```
-
-### Generic MCP client
-
-Any MCP-compatible client (VS Code Copilot, Cursor, custom agents) can connect over stdio:
+### Interactive installer (recommended)
 
 ```bash
-python3 /path/to/bingo-light/mcp-server.py
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
 ```
 
-The server speaks standard MCP stdio transport (Content-Length headers + JSON-RPC 2.0). It exposes `tools/list` and `tools/call` methods.
+The installer sets up: CLI, shell completions, MCP server for Claude, and the `/bingo` AI skill.
 
-### Available MCP tools
+### Homebrew (macOS/Linux)
 
-| Tool | Description |
-|---|---|
-| `bingo_init` | Initialize tracking for a forked repo |
-| `bingo_status` | Fork health: drift, patches, conflict risk |
-| `bingo_sync` | Fetch upstream and rebase patches (supports `dry_run`) |
-| `bingo_undo` | Revert to pre-sync state |
-| `bingo_patch_new` | Create a named patch from current changes |
-| `bingo_patch_list` | List all patches with stats |
-| `bingo_patch_show` | Show full diff for a patch |
-| `bingo_patch_drop` | Remove a patch from the stack |
-| `bingo_patch_export` | Export patches as `.patch` files |
-| `bingo_patch_import` | Import `.patch` files into the stack |
-| `bingo_doctor` | Full diagnostic with test rebase |
-| `bingo_diff` | Combined diff of all patches vs upstream |
-| `bingo_auto_sync` | Generate GitHub Actions workflow |
-| `bingo_conflict_analyze` | Structured conflict data for AI resolution |
-| `bingo_conflict_resolve` | Write resolved content, stage, continue rebase |
+```bash
+brew install DanOps-1/tap/bingo-light
+```
 
-## Command Reference
+### From source
 
-| Command | Description |
-|---|---|
-| `init <upstream-url> [branch]` | Initialize bingo-light, set up upstream tracking and patch branch |
-| `patch new <name>` | Create a new named patch from current changes |
-| `patch list [-v]` | List all patches in the stack with stats |
-| `patch show <name\|index>` | Show full diff for a specific patch |
-| `patch edit <name\|index>` | Amend an existing patch (stage fixes first) |
-| `patch drop <name\|index>` | Remove a patch from the stack |
-| `patch reorder` | Interactively reorder, squash, or drop patches |
-| `patch export [dir]` | Export patches as `.patch` files with series file |
-| `patch import <file\|dir>` | Import `.patch` files into the stack |
-| `sync [--dry-run] [--force]` | Fetch upstream and rebase all patches |
-| `undo` | Revert patches branch to pre-sync state |
-| `status` | Health check: drift, patches, conflict prediction |
-| `doctor` | Full diagnostic with test rebase |
-| `diff` | Combined diff of all patches vs upstream |
-| `log` | Show sync history (tracking branch reflog) |
-| `conflict-analyze` | Analyze rebase conflicts with structured output |
-| `auto-sync` | Generate GitHub Actions workflow for automated syncing |
-| `version` | Print version |
-| `help` | Print usage summary |
+```bash
+git clone https://github.com/DanOps-1/bingo-light.git
+cd bingo-light
+make install       # installs to /usr/local/bin
+make completions   # bash/zsh/fish tab completion
+```
 
-**Global flags:**
+### Manual
 
-| Flag | Description |
-|---|---|
-| `--json` | Structured JSON output on all commands (for AI agents and scripts) |
-| `--yes` | Non-interactive mode: skip all confirmation prompts |
+```bash
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-light \
+  -o /usr/local/bin/bingo-light && chmod +x /usr/local/bin/bingo-light
+```
+
+**Requirements:** bash 4.0+, git 2.20+, Python 3.8+ (for MCP server only)
+
+## Features
+
+### For AI agents
+
+| Feature | Description |
+|---------|-------------|
+| **MCP server** | 22 tools covering init through conflict resolution |
+| **`--json` flag** | Every command returns structured JSON |
+| **`--yes` flag** | Fully non-interactive, no TTY required |
+| **Auto-detect non-TTY** | Suppresses prompts when called via pipe or subprocess |
+| **`BINGO_DESCRIPTION`** | Set patch descriptions via environment variable |
+| **`conflict-analyze`** | Structured conflict data: file, ours, theirs, hints |
+| **`conflict-resolve`** | Write resolved content via MCP, auto-stage, continue rebase |
+| **Advisor agent** | `agent.py` monitors drift, analyzes risk, auto-syncs when safe |
+
+### For humans
+
+| Feature | Description |
+|---------|-------------|
+| **Single file, zero deps** | Just bash + git. Drop in PATH and go |
+| **Named patch stack** | Each customization is one atomic, named commit |
+| **One-command sync** | `bingo-light sync` rebases your patches onto upstream |
+| **Dry-run** | `sync --dry-run` tests on a temp branch first |
+| **Conflict memory** | git rerere auto-enabled; resolve once, never again |
+| **Undo** | `bingo-light undo` restores pre-sync state instantly |
+| **Conflict prediction** | `status` warns about files changed by both you and upstream |
+| **Doctor** | Full diagnostic with test rebase |
+| **Export/Import** | Share patches as `.patch` files (quilt-compatible) |
+| **Auto-sync CI** | Generates GitHub Actions workflow with conflict alerting |
+| **TUI dashboard** | Curses-based real-time monitoring (`tui.py`) |
+| **Workspace** | Manage multiple forks from one place |
+| **Shell completions** | Tab completion for bash, zsh, fish |
+| **Notification hooks** | Discord, Slack, generic webhook on sync/conflict/test events |
+| **Patch metadata** | Tags, reasons, expiry dates, upstream PR tracking |
+| **Test integration** | Run test suite after sync, auto-undo on failure |
 
 ## How It Works
 
@@ -239,147 +214,251 @@ The server speaks standard MCP stdio transport (Content-Length headers + JSON-RP
       |
       |  git fetch
       v
-  upstream-tracking -------- exact mirror, never touched manually
+  upstream-tracking ─────── exact mirror of upstream, never touched
       |
-      |  rebase
+      |  git rebase
       v
-  bingo-patches ------------ your customizations live here
+  bingo-patches ─────────── your customizations stacked here
       |
-      +-- [bl] dark-mode:     support dark color scheme
-      +-- [bl] api-cache:     add Redis caching layer
-      +-- [bl] fix-typo:      fix README typo
+      +── [bl] dark-mode:    support dark color scheme
+      +── [bl] api-cache:    add Redis caching layer
+      +── [bl] fix-logging:  structured JSON logs
       |
       v
     HEAD (your working fork)
 ```
 
-**Sync flow:** `fetch upstream` -> `fast-forward upstream-tracking` -> `rebase bingo-patches onto upstream-tracking`. Your patches always sit cleanly on top. Rerere remembers every conflict resolution automatically.
+**Sync flow:** fetch upstream -> fast-forward tracking branch -> rebase patches on top. Your patches always sit cleanly on upstream.
 
-**AI conflict flow:** when rebase hits a conflict, the AI calls `bingo_conflict_analyze` to get structured data about each conflicted file (ours, theirs, hints), writes the resolved content via `bingo_conflict_resolve`, and the rebase continues. No manual intervention.
+**Conflict memory:** git rerere is auto-enabled on init. Resolve a conflict once, and git remembers -- next sync applies the same fix automatically.
 
-**Config** is stored in `.bingolight` (git-config format) and excluded from version control via `.git/info/exclude` -- zero noise in your repo.
+**AI conflict flow:** when rebase hits a conflict, the AI calls `conflict-analyze` to get structured data (ours/theirs/hints per file), writes the resolution via `conflict-resolve`, and rebase continues. No manual intervention.
+
+## MCP Server
+
+`mcp-server.py` is a zero-dependency Python 3 MCP server exposing 22 tools over stdio (JSON-RPC 2.0).
+
+### Setup
+
+**Claude Code** -- add to `.mcp.json` or `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "bingo-light": {
+      "command": "python3",
+      "args": ["/path/to/bingo-light/mcp-server.py"]
+    }
+  }
+}
+```
+
+**Claude Desktop** -- add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "bingo-light": {
+      "command": "python3",
+      "args": ["/path/to/bingo-light/mcp-server.py"]
+    }
+  }
+}
+```
+
+**Any MCP client** (VS Code Copilot, Cursor, custom agents): connect via stdio to `python3 mcp-server.py`.
+
+### Available tools
+
+| Tool | Purpose |
+|------|---------|
+| `bingo_init` | Initialize fork tracking |
+| `bingo_status` | Fork health: drift, patches, conflict risk |
+| `bingo_sync` | Fetch upstream and rebase patches |
+| `bingo_undo` | Revert to pre-sync state |
+| `bingo_patch_new` | Create a named patch |
+| `bingo_patch_list` | List patch stack with stats |
+| `bingo_patch_show` | Show patch diff |
+| `bingo_patch_drop` | Remove a patch |
+| `bingo_patch_export` | Export as `.patch` files |
+| `bingo_patch_import` | Import `.patch` files |
+| `bingo_patch_meta` | Get/set patch metadata |
+| `bingo_patch_squash` | Merge two patches |
+| `bingo_patch_reorder` | Reorder patches non-interactively |
+| `bingo_doctor` | Full diagnostic with test rebase |
+| `bingo_diff` | Combined diff vs upstream |
+| `bingo_auto_sync` | Generate GitHub Actions workflow |
+| `bingo_conflict_analyze` | Structured conflict data for AI |
+| `bingo_conflict_resolve` | Write resolution, stage, continue rebase |
+| `bingo_config` | Get/set configuration |
+| `bingo_history` | Sync history with hash mappings |
+| `bingo_test` | Run configured test suite |
+| `bingo_workspace_status` | Multi-repo workspace overview |
+
+## Command Reference
+
+```
+bingo-light init <upstream-url> [branch]     Set up upstream tracking
+bingo-light patch new <name>                 Create named patch from staged changes
+bingo-light patch list [-v]                  List patches in the stack
+bingo-light patch show <name|index>          Show patch diff
+bingo-light patch edit <name|index>          Amend a patch (stage changes first)
+bingo-light patch drop <name|index>          Remove a patch
+bingo-light patch reorder [--order "3,1,2"]  Reorder patches
+bingo-light patch export [dir]               Export as .patch files
+bingo-light patch import <file|dir>          Import .patch files
+bingo-light patch squash <idx1> <idx2>       Merge two patches
+bingo-light patch meta <name> [key] [value]  Get/set patch metadata
+bingo-light sync [--dry-run] [--force]       Sync with upstream
+bingo-light sync --test                      Sync + run tests, undo on failure
+bingo-light undo                             Revert to pre-sync state
+bingo-light status                           Fork health and conflict prediction
+bingo-light doctor                           Full diagnostic
+bingo-light diff                             Combined patch diff vs upstream
+bingo-light log                              Sync history
+bingo-light conflict-analyze                 Analyze rebase conflicts
+bingo-light config get|set|list [key] [val]  Manage configuration
+bingo-light history                          Detailed sync history with mappings
+bingo-light test                             Run configured test suite
+bingo-light workspace init|add|status|sync   Multi-repo management
+bingo-light auto-sync                        Generate GitHub Actions workflow
+bingo-light version                          Print version
+bingo-light help                             Print usage summary
+```
+
+**Global flags:** `--json` (structured JSON output) | `--yes` (skip all prompts)
 
 ## Integration Guide
 
-### Claude Code
+### Claude Code (MCP)
 
-With the MCP server configured, Claude Code can manage your fork autonomously. Example session:
+With the MCP server configured, Claude Code manages your fork end-to-end:
 
 ```
 You: "Sync my fork with upstream and fix any conflicts."
 
 Claude Code:
-  1. Calls bingo_status(cwd="/path/to/repo")
-     -> sees 12 commits behind, 2 conflict-risk files
-  2. Calls bingo_sync(cwd="/path/to/repo", dry_run=true)
-     -> dry run shows 1 conflict in src/config.py
-  3. Calls bingo_sync(cwd="/path/to/repo")
-     -> rebase starts, stops at conflict
-  4. Calls bingo_conflict_analyze(cwd="/path/to/repo")
-     -> gets structured conflict data with ours/theirs content
-  5. Reads both versions, writes merged content
-  6. Calls bingo_conflict_resolve(cwd="/path/to/repo", file="src/config.py", content="...")
-     -> conflict resolved, rebase continues to completion
-  7. Calls bingo_status(cwd="/path/to/repo")
-     -> confirms: 0 behind, all patches applied cleanly
+  1. bingo_status(cwd)        -> 12 behind, risk: src/config.py
+  2. bingo_sync(cwd, dry_run) -> 1 conflict predicted
+  3. bingo_sync(cwd)          -> rebase stops at conflict
+  4. bingo_conflict_analyze() -> structured ours/theirs/hints
+  5. Reads both versions, generates merged content
+  6. bingo_conflict_resolve(cwd, file, content) -> done
+  7. bingo_status(cwd)        -> 0 behind, all patches clean
 ```
 
-### Aider
-
-Aider can call bingo-light directly through shell commands with JSON output:
+### Aider / CLI agents
 
 ```bash
-# In your aider session or automation script:
 bingo-light status --json          # Parse fork state
 bingo-light sync --yes             # Non-interactive sync
-bingo-light conflict-analyze --json # Get conflict data if sync fails
-```
-
-Aider reads the JSON, understands the conflict structure, edits the file, then:
-
-```bash
-git add src/config.py
-git rebase --continue
+bingo-light conflict-analyze --json # Structured conflict data
 ```
 
 ### Custom Python agent
 
 ```python
-import subprocess
-import json
+import subprocess, json
 
-def pingo(cmd, cwd="/path/to/repo"):
-    """Call bingo-light with JSON output."""
+def bingo(cmd, cwd="/path/to/repo"):
     result = subprocess.run(
         ["bingo-light"] + cmd.split() + ["--json", "--yes"],
         cwd=cwd, capture_output=True, text=True
     )
     return json.loads(result.stdout)
 
-# Check fork state
-status = pingo("status")
-print(f"Behind upstream by {status['behind']} commits")
-print(f"Conflict risk: {status['conflict_risk']}")
-
-# Sync with upstream
-result = pingo("sync")
-if result.get("conflicts"):
-    # Analyze conflicts
-    analysis = pingo("conflict-analyze")
-    for conflict in analysis["conflicts"]:
-        resolved = my_llm_resolve(conflict["ours"], conflict["theirs"], conflict["hint"])
-        # Write resolution through CLI
-        subprocess.run(
-            ["bingo-light", "conflict-resolve", conflict["file"], "--content", resolved],
-            cwd="/path/to/repo"
-        )
-
-# Verify
-status = pingo("status")
-assert status["behind"] == 0
+status = bingo("status")
+if status["behind"] > 0:
+    result = bingo("sync")
+    if result.get("conflicts"):
+        analysis = bingo("conflict-analyze")
+        for c in analysis["conflicts"]:
+            resolved = my_llm_resolve(c["ours"], c["theirs"], c["hint"])
+            # resolve via CLI or MCP
 ```
 
-## Quick Install
+## Configuration
 
-**One-liner:**
+Config is stored in `.bingolight` (git-config format), excluded from version control via `.git/info/exclude`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-light -o /usr/local/bin/bingo-light && chmod +x /usr/local/bin/bingo-light
+bingo-light config set sync.auto-test true     # Run tests after sync
+bingo-light config set test.command "make test" # Test command to run
+bingo-light config list                         # Show all settings
 ```
 
-**From source:**
+### Notification hooks
+
+Place executable scripts in `.bingo/hooks/`:
+
+| Hook | Triggered when |
+|------|---------------|
+| `on-sync-success` | Sync completes successfully |
+| `on-conflict` | Rebase hits a conflict |
+| `on-test-fail` | Post-sync tests fail |
+
+Each hook receives a JSON payload on stdin. See [contrib/hooks/](contrib/hooks/) for Slack, Discord, and generic webhook examples.
+
+## FAQ
+
+<details>
+<summary><b>Why not just <code>git rebase</code> manually?</b></summary>
+
+You can. bingo-light automates the ceremony around it: tracking the upstream remote, maintaining a dedicated patch branch, enabling rerere, predicting conflicts before sync, and providing structured output for automation. For a one-off rebase it's overkill. For ongoing fork maintenance with 3+ patches, it saves real time.
+</details>
+
+<details>
+<summary><b>Can I use this on an existing fork?</b></summary>
+
+Yes. Run `bingo-light init <upstream-url>` in your fork. Then convert your existing changes into named patches with `bingo-light patch new <name>`. The tool works with any standard git repository.
+</details>
+
+<details>
+<summary><b>Is this only for AI agents?</b></summary>
+
+No. The CLI works great for humans -- `bingo-light sync` is the same command whether you or an AI runs it. The AI-native features (`--json`, `--yes`, MCP) are purely additive. Without them, you get normal human-friendly output.
+</details>
+
+<details>
+<summary><b>How does conflict memory work?</b></summary>
+
+bingo-light enables git's `rerere` (reuse recorded resolution) on `init`. When you resolve a conflict, git remembers the resolution. Next time the same conflict appears during sync, it's applied automatically. bingo-light also detects auto-resolved conflicts and continues the rebase without stopping.
+</details>
+
+<details>
+<summary><b>What happens if sync goes wrong?</b></summary>
+
+Run `bingo-light undo`. It restores your patches branch to exactly where it was before the sync. The undo is based on git reflog, so it's reliable even after complex rebases.
+</details>
+
+<details>
+<summary><b>Does it work with GitHub/GitLab/Bitbucket?</b></summary>
+
+Yes. bingo-light works with any git remote. It uses standard git operations (fetch, rebase, push). The `auto-sync` command generates a GitHub Actions workflow, but the core tool is platform-agnostic.
+</details>
+
+<details>
+<summary><b>How is this different from <code>git format-patch</code> / quilt?</b></summary>
+
+`format-patch` exports patches but doesn't manage them as a living stack. quilt manages patches but operates outside git. bingo-light keeps patches as real git commits, so you get full git history, conflict resolution, and rerere -- while still supporting export/import in quilt-compatible format.
+</details>
+
+## Contributing
+
+Contributions are welcome. The entire CLI is a single bash script (`bingo-light`). The MCP server is a single Python file (`mcp-server.py`). No build step.
 
 ```bash
 git clone https://github.com/DanOps-1/bingo-light.git
 cd bingo-light
-./install.sh            # installs to /usr/local/bin (uses sudo if needed)
+make test    # run 71 tests
+make lint    # shellcheck
 ```
 
-**Manual:**
-
-```bash
-cp bingo-light /usr/local/bin/bingo-light
-chmod +x /usr/local/bin/bingo-light
-```
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
-
-The entire tool is a single bash script (`bingo-light`, ~1300 lines). The MCP server is a single Python file (`mcp-server.py`, zero dependencies beyond Python 3.8+). No build step -- edit and test directly.
-
-```bash
-# Quick test setup
-mkdir /tmp/test-upstream && cd /tmp/test-upstream && git init && echo "hello" > file.txt && git add -A && git commit -m "init"
-git clone /tmp/test-upstream /tmp/test-fork && cd /tmp/test-fork
-bingo-light init /tmp/test-upstream
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 
-[MIT](LICENSE) -- use it, fork it, patch it (with bingo-light, of course).
+[MIT](LICENSE)
 
 ---
 
@@ -388,43 +467,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## bingo-light -- AI 原生的 Fork 维护工具
 
-### 为什么是 AI 原生？
-
-AI 编程代理（Claude Code、Aider、Cursor 代理、自定义流水线）正在越来越多地处理 Fork 仓库中的实际工作。它们添加功能、修复 Bug、回移补丁。但当上游推进时，Fork 开始漂移，没有人能很好地回答 "AI 如何让这个 Fork 保持同步？"
-
-bingo-light 就是那座桥梁。AI 调用 MCP 工具，补丁作为干净的栈来管理，上游保持同步 ---- 包括全自动的冲突解决。
-
-### 核心特性
-
-- **MCP 服务器** -- 15 个工具覆盖从初始化到冲突解决的完整生命周期
-- **`--json` 标志** -- 所有命令返回结构化 JSON，代理可靠解析
-- **`--yes` 标志** -- 完全非交互模式，无需 TTY
-- **`conflict-analyze`** -- 返回结构化冲突数据（文件路径、ours/theirs 内容、冲突数量、提示）
-- **`bingo_conflict_resolve`** -- AI 通过 MCP 直接写入解决后的内容，自动暂存并继续 rebase
-- **单文件，零依赖** -- 只需 bash + git
-- **命名补丁栈** -- 每个自定义修改都是一个独立的、命名的补丁
-- **一键同步** -- `bingo-light sync` 获取上游更新并变基所有补丁
-- **冲突预测** -- `bingo-light status` 提前警告潜在冲突
-- **冲突记忆** -- git rerere 自动记住冲突解决方案，同样的冲突只需解决一次
-
-### AI 工作流程
-
-```
-AI 代理                                     bingo-light
-------                                      -----------
-bingo_init(cwd, upstream_url)           --> 设置上游追踪
-bingo_patch_new(cwd, name, description) --> 创建补丁
-bingo_status(cwd)                       --> {"behind": 5, "conflict_risk": ["app.py"]}
-bingo_sync(cwd)                         --> 变基补丁到上游
-bingo_conflict_analyze(cwd)             --> {"conflicts": [{file, ours, theirs}]}
-bingo_conflict_resolve(cwd, file, content) --> 写入修复，暂存，继续 rebase
-```
+你维护了一个 Fork，添加了上游没有的功能。然后上游推送了 50 个 commit，你的 Fork 就卡住了。**bingo-light 解决这个问题** -- 你的补丁作为干净的栈叠在上游之上，同步只需一条命令。
 
 ### 快速开始
 
 ```bash
 # 安装
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-light -o /usr/local/bin/bingo-light && chmod +x /usr/local/bin/bingo-light
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
 
 # 初始化
 cd my-forked-project
@@ -434,13 +483,22 @@ bingo-light init https://github.com/original/project.git
 vim src/feature.py
 bingo-light patch new my-feature
 
-# 与上游同步
+# 与上游同步（补丁自动变基到上游之上）
 bingo-light sync
 ```
 
-### MCP 服务器配置
+### 核心特性
 
-在 Claude Code 的 `.mcp.json` 或 `~/.claude/settings.json` 中添加：
+- **MCP 服务器** -- 22 个工具覆盖从初始化到冲突解决的完整生命周期
+- **`--json`** -- 所有命令返回结构化 JSON
+- **`--yes`** -- 完全非交互模式，无需 TTY
+- **冲突分析** -- `conflict-analyze` 返回结构化冲突数据
+- **冲突解决** -- AI 通过 MCP 直接写入解决内容，自动继续 rebase
+- **单文件，零依赖** -- 只需 bash + git
+- **冲突记忆** -- git rerere 自动记住解决方案，同样的冲突只需解决一次
+- **一键撤销** -- `bingo-light undo` 恢复同步前状态
+
+### MCP 配置
 
 ```json
 {
@@ -453,6 +511,8 @@ bingo-light sync
 }
 ```
 
-配置后，AI 代理可以直接调用 `bingo_status`、`bingo_sync`、`bingo_conflict_analyze` 等 MCP 工具来管理你的 Fork。
+配置后，AI 代理可以直接调用 22 个 MCP 工具管理你的 Fork。
+
+[完整文档](https://github.com/DanOps-1/bingo-light)
 
 </details>

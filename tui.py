@@ -23,13 +23,13 @@ import sys
 import time
 from pathlib import Path
 
-PINGO = os.environ.get("BINGO_LIGHT_BIN", str(Path(__file__).parent / "bingo-light"))
+BL = os.environ.get("BINGO_LIGHT_BIN", str(Path(__file__).parent / "bingo-light"))
 
 
-def run_pingo(args, cwd="."):
+def run_bl(args, cwd="."):
     try:
         result = subprocess.run(
-            [PINGO, "--json", "--yes"] + args,
+            [BL, "--json", "--yes"] + args,
             cwd=cwd, capture_output=True, text=True, timeout=30,
             env={**os.environ, "NO_COLOR": "1"},
         )
@@ -115,11 +115,11 @@ def main(stdscr):
         if args.workspace:
             repos = get_workspace_repos()
             for r in repos:
-                statuses[r["path"]] = run_pingo(["status"], r["path"])
+                statuses[r["path"]] = run_bl(["status"], r["path"])
         else:
             cwd = os.path.abspath(args.cwd)
             repos = [{"path": cwd, "alias": os.path.basename(cwd)}]
-            statuses[cwd] = run_pingo(["status"], cwd)
+            statuses[cwd] = run_bl(["status"], cwd)
 
     refresh_data()
 
@@ -164,13 +164,13 @@ def main(stdscr):
             repo = repos[selected]
             stdscr.addnstr(height - 2, 0, f" Syncing {repo['alias']}...", width - 1)
             stdscr.refresh()
-            run_pingo(["sync"], repo["path"])
+            run_bl(["sync"], repo["path"])
             refresh_data()
         elif key == ord("d") and repos:
             repo = repos[selected]
             stdscr.addnstr(height - 2, 0, f" Dry-run {repo['alias']}...", width - 1)
             stdscr.refresh()
-            result = run_pingo(["sync", "--dry-run"], repo["path"])
+            result = run_bl(["sync", "--dry-run"], repo["path"])
             msg = json.dumps(result)[:width - 2]
             stdscr.addnstr(height - 2, 0, f" {msg}", width - 1)
             stdscr.refresh()

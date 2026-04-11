@@ -6,15 +6,38 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: test
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Configure git identity
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@test"
-      - name: Run tests
+
+      - name: Run test suite
         run: ./tests/test.sh
+
+  lint:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Lint bingo-light
+        run: shellcheck bingo-light
+
+      - name: Lint install.sh
+        run: shellcheck install.sh || true
+
+      - name: Lint contrib hooks
+        run: shellcheck contrib/hooks/*

@@ -27,7 +27,7 @@ from pathlib import Path
 
 # ─── Tool Definitions ─────────────────────────────────────────────────────────
 
-PINGO = os.environ.get("BINGO_LIGHT_BIN", str(Path(__file__).parent / "bingo-light"))
+BL = os.environ.get("BINGO_LIGHT_BIN", str(Path(__file__).parent / "bingo-light"))
 
 TOOLS = [
     {
@@ -404,14 +404,14 @@ TOOLS = [
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
 
-def run_pingo(args: list[str], cwd: str, input_text: str = "") -> dict:
+def run_bl(args: list[str], cwd: str, input_text: str = "") -> dict:
     """Run bingo-light CLI and return structured result."""
     env = os.environ.copy()
     env["NO_COLOR"] = "1"  # Disable ANSI colors for machine-readable output
 
     try:
         result = subprocess.run(
-            [PINGO] + args,
+            [BL] + args,
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -428,7 +428,7 @@ def run_pingo(args: list[str], cwd: str, input_text: str = "") -> dict:
         }
     except FileNotFoundError:
         return {
-            "content": [{"type": "text", "text": f"bingo-light not found at: {PINGO}\nInstall: cp bingo-light /usr/local/bin/"}],
+            "content": [{"type": "text", "text": f"bingo-light not found at: {BL}\nInstall: cp bingo-light /usr/local/bin/"}],
             "isError": True,
         }
     except subprocess.TimeoutExpired:
@@ -443,61 +443,61 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     cwd = arguments.get("cwd", ".")
 
     if name == "bingo_status":
-        return run_pingo(["status", "--json"], cwd)
+        return run_bl(["status", "--json"], cwd)
 
     elif name == "bingo_init":
         args = ["init", arguments["upstream_url"]]
         if arguments.get("branch"):
             args.append(arguments["branch"])
-        return run_pingo(args, cwd, input_text="\n")  # Accept defaults
+        return run_bl(args, cwd, input_text="\n")  # Accept defaults
 
     elif name == "bingo_patch_new":
         desc = arguments.get("description", "no description")
-        return run_pingo(["patch", "new", arguments["name"]], cwd, input_text=f"{desc}\n")
+        return run_bl(["patch", "new", arguments["name"]], cwd, input_text=f"{desc}\n")
 
     elif name == "bingo_patch_list":
         args = ["patch", "list"]
         if arguments.get("verbose"):
             args.append("-v")
-        return run_pingo(args, cwd)
+        return run_bl(args, cwd)
 
     elif name == "bingo_patch_show":
-        return run_pingo(["patch", "show", arguments["target"]], cwd)
+        return run_bl(["patch", "show", arguments["target"]], cwd)
 
     elif name == "bingo_patch_drop":
-        return run_pingo(["patch", "drop", arguments["target"]], cwd, input_text="y\n")
+        return run_bl(["patch", "drop", arguments["target"]], cwd, input_text="y\n")
 
     elif name == "bingo_patch_export":
         args = ["patch", "export"]
         if arguments.get("output_dir"):
             args.append(arguments["output_dir"])
-        return run_pingo(args, cwd)
+        return run_bl(args, cwd)
 
     elif name == "bingo_patch_import":
-        return run_pingo(["patch", "import", arguments["path"]], cwd)
+        return run_bl(["patch", "import", arguments["path"]], cwd)
 
     elif name == "bingo_sync":
         args = ["sync", "--force"]  # Skip interactive prompt
         if arguments.get("dry_run"):
             args = ["sync", "--dry-run"]
-        return run_pingo(args, cwd)
+        return run_bl(args, cwd)
 
     elif name == "bingo_undo":
-        return run_pingo(["undo"], cwd, input_text="y\n")
+        return run_bl(["undo"], cwd, input_text="y\n")
 
     elif name == "bingo_doctor":
-        return run_pingo(["doctor"], cwd)
+        return run_bl(["doctor"], cwd)
 
     elif name == "bingo_diff":
-        return run_pingo(["diff"], cwd)
+        return run_bl(["diff"], cwd)
 
     elif name == "bingo_auto_sync":
         schedule_map = {"daily": "1", "6h": "2", "weekly": "3"}
         choice = schedule_map.get(arguments.get("schedule", "daily"), "1")
-        return run_pingo(["auto-sync"], cwd, input_text=f"{choice}\n")
+        return run_bl(["auto-sync"], cwd, input_text=f"{choice}\n")
 
     elif name == "bingo_conflict_analyze":
-        return run_pingo(["conflict-analyze", "--json"], cwd)
+        return run_bl(["conflict-analyze", "--json"], cwd)
 
     elif name == "bingo_conflict_resolve":
         from pathlib import Path as _P
@@ -535,32 +535,32 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     elif name == "bingo_config":
         action = arguments.get("action", "list")
         if action == "get":
-            return run_pingo(["config", "get", arguments.get("key", "")], cwd)
+            return run_bl(["config", "get", arguments.get("key", "")], cwd)
         elif action == "set":
-            return run_pingo(["config", "set", arguments.get("key", ""), arguments.get("value", "")], cwd)
+            return run_bl(["config", "set", arguments.get("key", ""), arguments.get("value", "")], cwd)
         else:
-            return run_pingo(["config", "list"], cwd)
+            return run_bl(["config", "list"], cwd)
 
     elif name == "bingo_history":
-        return run_pingo(["history"], cwd)
+        return run_bl(["history"], cwd)
 
     elif name == "bingo_test":
-        return run_pingo(["test"], cwd)
+        return run_bl(["test"], cwd)
 
     elif name == "bingo_patch_meta":
         args = ["patch", "meta", arguments["name"]]
         if arguments.get("set_field") and arguments.get("value"):
             args += [f"--set-{arguments['set_field']}", arguments["value"]]
-        return run_pingo(args, cwd)
+        return run_bl(args, cwd)
 
     elif name == "bingo_patch_squash":
-        return run_pingo(["patch", "squash", str(arguments["index1"]), str(arguments["index2"])], cwd)
+        return run_bl(["patch", "squash", str(arguments["index1"]), str(arguments["index2"])], cwd)
 
     elif name == "bingo_patch_reorder":
-        return run_pingo(["patch", "reorder", "--order", arguments["order"]], cwd)
+        return run_bl(["patch", "reorder", "--order", arguments["order"]], cwd)
 
     elif name == "bingo_workspace_status":
-        return run_pingo(["workspace", "status"], cwd)
+        return run_bl(["workspace", "status"], cwd)
 
     else:
         return {

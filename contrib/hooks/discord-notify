@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# pingo-light hook: send Discord notification
-# Install: cp this to .pingo/hooks/on-sync-success (or on-conflict)
+# bingo-light hook: send Discord notification
+# Install: cp this to .bingo/hooks/on-sync-success (or on-conflict)
 # Set DISCORD_WEBHOOK_URL environment variable
 
 set -euo pipefail
@@ -13,5 +13,5 @@ EVENT=$(basename "$0")
 
 curl -s -X POST "$WEBHOOK" \
   -H 'Content-type: application/json' \
-  -d '{"content":"**pingo-light** ['"$EVENT"']: '"$DATA"'"}' \
+  -d '{"content":"**bingo-light** ['"$EVENT"']: '"$DATA"'"}' \
   >/dev/null 2>&1 || true

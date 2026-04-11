@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# pingo-light hook: send to any webhook URL
-# Install: cp this to .pingo/hooks/on-sync-success (or on-conflict)
-# Set PINGO_WEBHOOK_URL environment variable
+# bingo-light hook: send to any webhook URL
+# Install: cp this to .bingo/hooks/on-sync-success (or on-conflict)
+# Set BINGO_WEBHOOK_URL environment variable
 
 set -euo pipefail
 
-WEBHOOK="${PINGO_WEBHOOK_URL:-}"
+WEBHOOK="${BINGO_WEBHOOK_URL:-}"
 [[ -z "$WEBHOOK" ]] && exit 0
 
 DATA=$(cat)

@@ -9,7 +9,7 @@ AI-native fork maintenance tool. Single-file bash CLI + MCP server designed for 
 - Auto-detects non-TTY stdin → enables non-interactive mode automatically
 - `BINGO_DESCRIPTION` env var: set patch description without stdin
 - `conflict-analyze --json`: structured conflict info for AI resolution
-- MCP server: 15 tools including `bingo_conflict_resolve` (AI writes resolved content directly)
+- MCP server: 22 tools including `bingo_conflict_resolve` (AI writes resolved content directly)
 
 ## For AI agents: prefer MCP or --json
 
@@ -88,6 +88,6 @@ All tools require `cwd` parameter.
 ## Development
 
 ```bash
-make test    # run 50 tests
+make test    # run 71 tests
 make lint    # shellcheck
 ```

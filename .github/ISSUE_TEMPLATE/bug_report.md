@@ -4,11 +4,11 @@ about: Report a bug or unexpected behavior
 labels: bug
 ---
 
-**pingo-light version**
-
+**bingo-light version**
+<!-- Run: bingo-light version -->
 
 **Operating system**
-
+<!-- e.g., Ubuntu 22.04, macOS 14.2, etc. -->
 
 **Description**
 
@@ -16,7 +16,7 @@ A clear description of the bug.
 
 **Steps to reproduce**
 
-1. Run `pingo-light ...`
+1. Run `bingo-light ...`
 2. ...
 
 **Expected behavior**

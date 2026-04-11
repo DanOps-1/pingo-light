@@ -4,25 +4,28 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | Yes       |
+| 1.x     | Yes       |
 | < 1.0   | No        |
 
 ## Reporting a Vulnerability
 
-Please report security vulnerabilities via GitHub Issues with the `security` label, or email the maintainer directly.
+For **exploitable vulnerabilities**, please report privately via [GitHub Security Advisories](https://github.com/DanOps-1/bingo-light/security/advisories) or email the maintainer directly. Do not open a public issue.
 
-**Do not** open a public issue for vulnerabilities that could be exploited before a fix is available.
+For **non-exploitable security improvements**, a regular issue with the `security` label is fine.
+
+We aim to acknowledge reports within 48 hours and release fixes within 7 days.
 
 ## Security Model
 
-- **MCP server** validates all file paths stay within the repository (`os.path.realpath` + prefix check)
-- **CLI** does not execute arbitrary code from config files (config values are passed to git, not eval'd)
-- **Agent** LLM responses are used for analysis/reporting only, never executed as code
-- **Hooks** are user-installed executables; bingo-light does not ship hooks that execute by default
-- **Shallow clone** auto-unshallowing uses `git fetch --unshallow`, not custom network calls
+- **MCP server**: all file paths validated using `pathlib.Path.resolve().relative_to()` to prevent path traversal (including symlink bypass)
+- **CLI**: no `eval` of user input. Config values are passed to git commands, never executed as shell code
+- **Python calls**: all `python3 -c` invocations pass data via stdin, never through shell variable interpolation
+- **Agent**: LLM responses are used for analysis and reporting only, never executed as code
+- **Hooks**: user-installed executables in `.bingo/hooks/`. No hooks are shipped active by default
+- **Config isolation**: `.bingolight` is excluded from git tracking via `.git/info/exclude`
 
-## Known Security Considerations
+## Known Considerations
 
-- The `.bingolight` config file is excluded from git tracking via `.git/info/exclude`, preventing accidental commit of upstream URLs
-- Patch descriptions set via `BINGO_DESCRIPTION` environment variable are sanitized through git commit message handling
+- `BINGO_DESCRIPTION` environment variable is sanitized through git commit message handling
 - The `auto-sync` GitHub Actions workflow requires a `GITHUB_TOKEN` with write permissions
+- Patch export produces standard `.patch` files -- verify content before applying to untrusted repos

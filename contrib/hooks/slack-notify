@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# pingo-light hook: send Slack notification
-# Install: cp this to .pingo/hooks/on-sync-success (or on-conflict)
+# bingo-light hook: send Slack notification
+# Install: cp this to .bingo/hooks/on-sync-success (or on-conflict)
 # Set SLACK_WEBHOOK_URL environment variable
 #
 # Receives JSON on stdin: {"behind_before":5,"patches_rebased":3}
@@ -13,7 +13,7 @@ WEBHOOK="${SLACK_WEBHOOK_URL:-}"
 DATA=$(cat)
 EVENT=$(basename "$0")
 
-TEXT="*pingo-light* [$EVENT]: $DATA"
+TEXT="*bingo-light* [$EVENT]: $DATA"
 
 curl -s -X POST "$WEBHOOK" \
   -H 'Content-type: application/json' \

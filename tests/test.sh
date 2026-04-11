@@ -3,7 +3,7 @@
 # Usage: ./tests/test.sh [path-to-bingo-light]
 set -uo pipefail
 
-PINGO="${1:-$(cd "$(dirname "$0")/.." && pwd)/bingo-light}"
+BL="${1:-$(cd "$(dirname "$0")/.." && pwd)/bingo-light}"
 TMPDIR_BASE=$(mktemp -d)
 PASS=0 FAIL=0 SKIP=0
 OUT=""
@@ -19,7 +19,7 @@ skip() { ((SKIP++)); echo -e "  ${YELLOW}SKIP${RESET} $1"; }
 section() { echo -e "\n${BOLD}$1${RESET}"; }
 
 # Safe runner: captures stdout+stderr, avoids SIGPIPE issues
-run()  { OUT=$("$PINGO" "$@" 2>&1) || true; }
+run()  { OUT=$("$BL" "$@" 2>&1) || true; }
 has()  { echo "$OUT" | grep -qi "$1"; }
 hasE() { echo "$OUT" | grep -qE "$1"; }
 
@@ -69,7 +69,7 @@ repos=$(setup_repos init)
 upstream="${repos%%|*}" fork="${repos##*|}"
 cd "$fork"
 
-OUT=$("$PINGO" init "$upstream" main < /dev/null 2>&1) || true
+OUT=$("$BL" init "$upstream" main < /dev/null 2>&1) || true
 if has "initialized"; then pass "init succeeds"; else fail "init" "did not report success"; fi
 
 if [[ -f .bingolight ]]; then pass "config file created"; else fail "config file" "not found"; fi
@@ -80,7 +80,7 @@ if [[ "$(git config rerere.enabled)" == "true" ]]; then pass "rerere enabled"; e
 repos=$(setup_repos init-auto)
 upstream="${repos%%|*}" fork="${repos##*|}"
 cd "$fork"
-OUT=$("$PINGO" init "$upstream" < /dev/null 2>&1) || true
+OUT=$("$BL" init "$upstream" < /dev/null 2>&1) || true
 if has "initialized"; then pass "init auto-detects branch"; else fail "init auto-detect" "failed"; fi
 
 # ─── patch new ────────────────────────────────────────────────────────────────
@@ -90,10 +90,10 @@ section "3. Patch New"
 repos=$(setup_repos patch)
 upstream="${repos%%|*}" fork="${repos##*|}"
 cd "$fork"
-"$PINGO" init "$upstream" main < /dev/null &>/dev/null || true
+"$BL" init "$upstream" main < /dev/null &>/dev/null || true
 
 echo "custom_feature = True" >> app.py
-OUT=$(echo "added feature" | "$PINGO" patch new test-feature 2>&1) || true
+OUT=$(echo "added feature" | "$BL" patch new test-feature 2>&1) || true
 if has "created"; then pass "patch new creates patch"; else fail "patch new" "did not report creation"; fi
 
 if git log -1 --format="%s" | grep -q '^\[bl\] test-feature:'; then
@@ -103,11 +103,11 @@ else
 fi
 
 echo "another = True" >> config.py
-OUT=$(echo "config change" | "$PINGO" patch new config-tweak 2>&1) || true
+OUT=$(echo "config change" | "$BL" patch new config-tweak 2>&1) || true
 if has "created"; then pass "second patch created"; else fail "second patch" "creation failed"; fi
 
 echo "dup" >> README.md
-OUT=$(echo "dup" | "$PINGO" patch new test-feature 2>&1) || true
+OUT=$(echo "dup" | "$BL" patch new test-feature 2>&1) || true
 if has "already exists"; then pass "rejects duplicate patch name"; else fail "duplicate name" "not rejected"; fi
 git checkout -- README.md 2>/dev/null || true
 
@@ -155,7 +155,7 @@ if [[ "$patch_count" -eq 2 ]]; then pass "correct number of .patch files"; else 
 repos2=$(setup_repos import)
 upstream2="${repos2%%|*}" fork2="${repos2##*|}"
 cd "$fork2"
-"$PINGO" init "$upstream2" main < /dev/null &>/dev/null || true
+"$BL" init "$upstream2" main < /dev/null &>/dev/null || true
 
 run patch import "$export_dir"
 if has "complete"; then pass "patch import from directory"; else fail "patch import" "failed"; fi
@@ -169,7 +169,7 @@ if [[ "$import_count" -eq 2 ]]; then pass "imported correct number of patches"; 
 section "7. Patch Drop"
 
 cd "$fork"
-OUT=$(echo "y" | "$PINGO" patch drop 2 2>&1) || true
+OUT=$(echo "y" | "$BL" patch drop 2 2>&1) || true
 if has "dropped"; then pass "patch drop by index"; else fail "patch drop" "failed"; fi
 
 run patch list
@@ -253,7 +253,7 @@ if has "custom_feature"; then pass "diff shows patch content"; else fail "diff" 
 section "12. Undo"
 
 cd "$fork"
-"$PINGO" sync --force &>/dev/null || true
+"$BL" sync --force &>/dev/null || true
 
 saved_head=$(git rev-parse bingo-patches)
 
@@ -261,11 +261,11 @@ cd "$upstream"
 echo "# undo test" >> README.md
 git add -A && git commit -q -m "Upstream: for undo test"
 cd "$fork"
-"$PINGO" sync --force &>/dev/null || true
+"$BL" sync --force &>/dev/null || true
 
 new_head=$(git rev-parse bingo-patches)
 if [[ "$saved_head" != "$new_head" ]]; then
-    OUT=$(echo "y" | "$PINGO" undo 2>&1) || true
+    OUT=$(echo "y" | "$BL" undo 2>&1) || true
     if has "undone\|restored"; then pass "undo restores previous state"; else fail "undo" "did not restore"; fi
 else
     skip "undo (no state change to undo)"
@@ -286,7 +286,7 @@ cd "$fork"
 run status
 if has "not initialized"; then pass "error on uninitialized repo"; else fail "uninitialized" "no error"; fi
 
-"$PINGO" init "${repos%%|*}" main < /dev/null &>/dev/null || true
+"$BL" init "${repos%%|*}" main < /dev/null &>/dev/null || true
 echo "dirty" >> app.py
 run sync --force
 if has "dirty\|commit\|stash"; then pass "rejects sync on dirty tree"; else fail "dirty tree" "not rejected"; fi
@@ -296,7 +296,7 @@ git checkout -- app.py 2>/dev/null || true
 
 section "14. Auto-Sync"
 
-OUT=$(echo "1" | "$PINGO" auto-sync 2>&1) || true
+OUT=$(echo "1" | "$BL" auto-sync 2>&1) || true
 if has "workflow generated"; then pass "auto-sync generates workflow"; else fail "auto-sync" "no workflow generated"; fi
 
 if [[ -f .github/workflows/bingo-light-sync.yml ]]; then pass "workflow file exists"; else fail "workflow file" "not found"; fi
@@ -306,7 +306,7 @@ if grep -q "bingo-light" .github/workflows/bingo-light-sync.yml; then pass "work
 
 section "15. MCP Server"
 
-MCP_SERVER="$(dirname "$PINGO")/mcp-server.py"
+MCP_SERVER="$(dirname "$BL")/mcp-server.py"
 if [[ -f "$MCP_SERVER" ]]; then
     tool_count=$(python3 -c "
 import json, subprocess
@@ -343,33 +343,33 @@ section "16. JSON Output"
 repos=$(setup_repos json-test)
 upstream="${repos%%|*}" fork="${repos##*|}"
 cd "$fork"
-"$PINGO" init "$upstream" --yes &>/dev/null || true
+"$BL" init "$upstream" --yes &>/dev/null || true
 
 json_valid() {
     echo "$1" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null
 }
 
 for cmd_name in "status" "patch list" "doctor" "diff" "log"; do
-    OUT=$("$PINGO" $cmd_name --json 2>/dev/null) || true
+    OUT=$("$BL" $cmd_name --json 2>/dev/null) || true
     if json_valid "$OUT"; then pass "$cmd_name --json valid"; else fail "$cmd_name --json" "invalid JSON"; fi
 done
 
 # patch show needs a patch
 echo "json-test" >> app.py
-BINGO_DESCRIPTION="json test" "$PINGO" patch new json-test-patch --yes &>/dev/null || true
-OUT=$("$PINGO" patch show 1 --json 2>/dev/null) || true
+BINGO_DESCRIPTION="json test" "$BL" patch new json-test-patch --yes &>/dev/null || true
+OUT=$("$BL" patch show 1 --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "patch show --json valid"; else fail "patch show --json" "invalid JSON"; fi
 
 # patch export
-OUT=$("$PINGO" patch export "$TMPDIR_BASE/json-export" --json 2>/dev/null) || true
+OUT=$("$BL" patch export "$TMPDIR_BASE/json-export" --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "patch export --json valid"; else fail "patch export --json" "invalid JSON"; fi
 
 # sync (already up to date)
-OUT=$("$PINGO" sync --json --yes 2>/dev/null) || true
+OUT=$("$BL" sync --json --yes 2>/dev/null) || true
 if json_valid "$OUT"; then pass "sync --json valid (up-to-date)"; else fail "sync --json" "invalid JSON"; fi
 
 # conflict-analyze (not in rebase)
-OUT=$("$PINGO" conflict-analyze --json 2>/dev/null) || true
+OUT=$("$BL" conflict-analyze --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "conflict-analyze --json valid"; else fail "conflict-analyze --json" "invalid JSON"; fi
 
 # ─── v0.7+ features ──────────────────────────────────────────────────────────
@@ -383,18 +383,18 @@ if has "set\|true"; then pass "config set"; else fail "config set" "no output"; 
 run config get sync.auto
 if has "true"; then pass "config get"; else fail "config get" "wrong value"; fi
 
-OUT=$("$PINGO" config list --json 2>/dev/null) || true
+OUT=$("$BL" config list --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "config list --json valid"; else fail "config list --json" "invalid"; fi
 
 # Patch metadata
 run patch meta json-test-patch --set-reason "test reason"
 if has "set\|reason"; then pass "patch meta set-reason"; else fail "patch meta" "no output"; fi
 
-OUT=$("$PINGO" patch meta json-test-patch --json 2>/dev/null) || true
+OUT=$("$BL" patch meta json-test-patch --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "patch meta --json valid"; else fail "patch meta --json" "invalid"; fi
 
 # History (already synced above, may or may not have entries)
-OUT=$("$PINGO" history --json 2>/dev/null) || true
+OUT=$("$BL" history --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "history --json valid"; else fail "history --json" "invalid"; fi
 
 # Test command
@@ -402,7 +402,7 @@ run config set test.command "true"
 run test
 if has "pass"; then pass "test command works"; else fail "test" "did not pass"; fi
 
-OUT=$("$PINGO" test --json 2>/dev/null) || true
+OUT=$("$BL" test --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "test --json valid"; else fail "test --json" "invalid"; fi
 
 # ─── Conflict flow ───────────────────────────────────────────────────────────
@@ -412,11 +412,11 @@ section "18. Conflict Flow"
 repos=$(setup_repos conflict-flow)
 upstream="${repos%%|*}" fork_cf="${repos##*|}"
 cd "$fork_cf"
-"$PINGO" init "$upstream" main --yes &>/dev/null || true
+"$BL" init "$upstream" main --yes &>/dev/null || true
 
 # Create a patch that touches app.py
 echo "my_change" >> app.py
-BINGO_DESCRIPTION="my change" "$PINGO" patch new my-change --yes &>/dev/null || true
+BINGO_DESCRIPTION="my change" "$BL" patch new my-change --yes &>/dev/null || true
 
 # Make upstream change the SAME line (force conflict)
 cd "$upstream"
@@ -425,7 +425,7 @@ git add -A && git commit -q -m "upstream conflict"
 
 # Sync should fail with conflict
 cd "$fork_cf"
-OUT=$("$PINGO" sync --json --yes 2>/dev/null) || true
+OUT=$("$BL" sync --json --yes 2>/dev/null) || true
 if echo "$OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('conflict')==True" 2>/dev/null; then
     pass "sync --json reports conflict"
 else
@@ -433,7 +433,7 @@ else
 fi
 
 # conflict-analyze should find the conflict
-OUT=$("$PINGO" conflict-analyze --json 2>/dev/null) || true
+OUT=$("$BL" conflict-analyze --json 2>/dev/null) || true
 if echo "$OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['in_rebase']==True" 2>/dev/null; then
     pass "conflict-analyze detects rebase state"
 else
@@ -452,13 +452,13 @@ upstream="${repos%%|*}" fork_ni="${repos##*|}"
 cd "$fork_ni"
 
 # Full non-interactive init+patch+status via --yes and env vars
-"$PINGO" init "$upstream" --yes &>/dev/null || true
+"$BL" init "$upstream" --yes &>/dev/null || true
 echo "auto" >> app.py
-OUT=$(BINGO_DESCRIPTION="automated patch" "$PINGO" patch new auto-patch --yes 2>/dev/null) || true
+OUT=$(BINGO_DESCRIPTION="automated patch" "$BL" patch new auto-patch --yes 2>/dev/null) || true
 if has "created"; then pass "--yes patch new works"; else fail "--yes patch new" "did not create"; fi
 
 # Status via pipe (non-TTY auto-detected)
-OUT=$(echo "" | "$PINGO" status --json 2>/dev/null) || true
+OUT=$(echo "" | "$BL" status --json 2>/dev/null) || true
 if json_valid "$OUT"; then pass "pipe mode status works"; else fail "pipe mode" "broken"; fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────

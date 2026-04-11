@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.1.0] - 2026-04-11
+
+### Added
+- CODE_OF_CONDUCT.md (Contributor Covenant v2.0)
+- .editorconfig for consistent code style
+- .github/ISSUE_TEMPLATE/config.yml with discussion links
+- .github/FUNDING.yml for GitHub Sponsors
+- FAQ section in README (7 common questions)
+- ShellCheck job in CI pipeline (separate from tests)
+
+### Fixed
+- All remaining `pingo` references renamed to `bingo` across codebase
+- 12 Python injection vulnerabilities: all `python3 -c` calls now pass data via stdin
+- LICENSE copyright: `pingo-light` → `bingo-light`
+- contrib/hooks: all three hooks updated from `pingo-light` to `bingo-light`
+- PINGO_WEBHOOK_URL → BINGO_WEBHOOK_URL in generic webhook hook
+- Internal variable names: PINGO → BL, run_pingo → run_bl in mcp-server.py, agent.py, tui.py, tests
+- MCP tool count: README and CLAUDE.md now correctly say 22 (was 15)
+- Sync history uses atomic writes (tempfile + os.replace)
+
+### Changed
+- README: complete overhaul matching top-project standards (TOC, demo output, FAQ, feature tables, centered header)
+- CI: split into Tests + ShellCheck jobs with explicit permissions
+- CONTRIBUTING.md: expanded with project structure, commit conventions, test patterns
+- SECURITY.md: updated to reflect actual security measures (pathlib, stdin-only python)
+- PR template: added python3 injection check to checklist
+- Issue templates: improved with version hint comments
+
 ## [1.0.0] - 2026-04-10
 
 ### Added
