@@ -7,7 +7,9 @@
   <code>&nbsp; |_.__/|_|_| |_|\__, |\___/     |_|_|\__, |_| |_|\__| &nbsp;</code><br>
   <code>&nbsp;                |___/                 |___/             &nbsp;</code><br>
   <br>
-  <strong>AI-native fork maintenance. Keep your patches. Stay in sync.</strong>
+  <strong>AI-native fork maintenance. Keep your patches, stay in sync.</strong>
+  <br><br>
+  <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
   <br><br>
   <a href="https://github.com/DanOps-1/bingo-light/actions"><img src="https://github.com/DanOps-1/bingo-light/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
@@ -18,7 +20,9 @@
   <br><br>
 </p>
 
-You maintain a fork. You add features upstream doesn't have. Then upstream pushes 50 commits and your fork is stuck. **bingo-light fixes this** -- your patches live as a clean stack on top of upstream, and syncing is one command.
+You maintain a fork. You add features upstream doesn't have. Upstream pushes 50 commits and your fork is stuck.
+
+**bingo-light fixes this** -- your patches live as a clean stack on top of upstream, and syncing is one command.
 
 Built for **AI agents** (MCP server, structured JSON, non-interactive mode) and **humans** (single file, zero dependencies, just bash + git).
 
@@ -36,6 +40,7 @@ Built for **AI agents** (MCP server, structured JSON, non-interactive mode) and 
 - [Integration Guide](#integration-guide)
 - [Configuration](#configuration)
 - [FAQ](#faq)
+- [Comparison](#comparison)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -55,7 +60,7 @@ bingo-light init https://github.com/original/project.git
 vim src/feature.py
 bingo-light patch new my-feature
 
-# Sync with upstream (your patches rebase on top automatically)
+# Sync with upstream (patches rebase on top automatically)
 bingo-light sync
 ```
 
@@ -63,39 +68,9 @@ That's it. Your patches are a clean stack on top of upstream. Sync as often as y
 
 ## Demo
 
-### Fork status at a glance
-
-```
-$ bingo-light status
-
-  bingo-light status
-  ──────────────────────────────────────────
-
-    Upstream   https://github.com/original/project.git (main)
-    Behind     12 commits
-    Patches    3 in stack
-
-    #1  dark-mode       support dark color scheme          3 files
-    #2  api-cache       add Redis caching layer            5 files
-    #3  fix-logging     structured JSON logs               1 file
-
-    Conflict risk
-      src/config.py — modified by both upstream and patch #2
-```
-
-### One-command sync
-
-```
-$ bingo-light sync
-
-  Fetching upstream...
-  Upstream: 12 new commits
-  Rebasing 3 patches onto upstream...
-    [1/3] dark-mode .......... ok
-    [2/3] api-cache .......... ok
-    [3/3] fix-logging ........ ok
-  Sync complete. 3 patches rebased onto 12 upstream commits.
-```
+<p align="center">
+  <img src="docs/demo.svg" alt="bingo-light demo" width="850">
+</p>
 
 ### AI gets structured JSON
 
@@ -105,14 +80,14 @@ $ bingo-light status --json
 ```json
 {
   "ok": true,
-  "upstream_url": "https://github.com/original/project.git",
-  "behind": 12,
-  "patch_count": 3,
+  "upstream_url": "https://github.com/torvalds/linux.git",
+  "behind": 47,
+  "patch_count": 2,
   "patches": [
-    {"name": "dark-mode", "hash": "a3f7c21", "subject": "support dark color scheme", "files": 3},
-    {"name": "api-cache", "hash": "b8e2d4f", "subject": "add Redis caching layer", "files": 5}
+    {"name": "custom-scheduler", "hash": "a3f7c21", "subject": "O(1) task scheduling", "files": 3},
+    {"name": "perf-monitoring", "hash": "b8e2d4f", "subject": "eBPF tracing hooks", "files": 5}
   ],
-  "conflict_risk": ["src/config.py"]
+  "conflict_risk": ["kernel/sched/core.c"]
 }
 ```
 
@@ -124,14 +99,14 @@ $ bingo-light conflict-analyze --json
 ```json
 {
   "rebase_in_progress": true,
-  "current_patch": "api-cache",
+  "current_patch": "custom-scheduler",
   "conflicts": [
     {
-      "file": "src/config.py",
+      "file": "kernel/sched/core.c",
       "conflict_count": 2,
       "ours": "... upstream version ...",
       "theirs": "... your patch version ...",
-      "hint": "Upstream refactored Config class; patch needs to target new structure."
+      "hint": "Upstream refactored scheduler core; patch needs to target new structure."
     }
   ]
 }
@@ -145,7 +120,7 @@ $ bingo-light conflict-analyze --json
 curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
 ```
 
-The installer sets up: CLI, shell completions, MCP server for Claude, and the `/bingo` AI skill.
+The installer sets up: CLI, shell completions (bash/zsh/fish), MCP server for Claude, and the `/bingo` AI skill.
 
 ### Homebrew (macOS/Linux)
 
@@ -220,9 +195,9 @@ curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-lig
       v
   bingo-patches ─────────── your customizations stacked here
       |
-      +── [bl] dark-mode:    support dark color scheme
-      +── [bl] api-cache:    add Redis caching layer
-      +── [bl] fix-logging:  structured JSON logs
+      +── [bl] custom-scheduler:  O(1) task scheduling
+      +── [bl] perf-monitoring:   eBPF tracing hooks
+      +── [bl] fix-logging:       structured JSON logs
       |
       v
     HEAD (your working fork)
@@ -338,7 +313,7 @@ With the MCP server configured, Claude Code manages your fork end-to-end:
 You: "Sync my fork with upstream and fix any conflicts."
 
 Claude Code:
-  1. bingo_status(cwd)        -> 12 behind, risk: src/config.py
+  1. bingo_status(cwd)        -> 47 behind, risk: core.c
   2. bingo_sync(cwd, dry_run) -> 1 conflict predicted
   3. bingo_sync(cwd)          -> rebase stops at conflict
   4. bingo_conflict_analyze() -> structured ours/theirs/hints
@@ -443,6 +418,35 @@ Yes. bingo-light works with any git remote. It uses standard git operations (fet
 `format-patch` exports patches but doesn't manage them as a living stack. quilt manages patches but operates outside git. bingo-light keeps patches as real git commits, so you get full git history, conflict resolution, and rerere -- while still supporting export/import in quilt-compatible format.
 </details>
 
+## Comparison
+
+| | bingo-light | git rebase (manual) | quilt | Stacked Diffs (spr/ghstack) |
+|---|:---:|:---:|:---:|:---:|
+| Named patch stack | **Yes** | No | Yes | Yes |
+| One-command upstream sync | **Yes** | No (multi-step) | No (manual) | Partial |
+| Conflict memory (rerere) | **Auto** | Manual enable | No | No |
+| Conflict prediction | **Yes** | No | No | No |
+| AI/MCP integration | **22 tools** | No | No | No |
+| Structured JSON output | **All commands** | No | No | Partial |
+| Non-interactive mode | **Native** | Partial | Partial | Yes |
+| Dependencies | bash + git | git | quilt | Language-specific |
+| Install | Single file copy | Built-in | Package manager | Package manager |
+| Undo sync | **One command** | git reflog | Manual | Depends |
+
+## Project Ecosystem
+
+```
+bingo-light          CLI core (single bash script)
+mcp-server.py        MCP server (zero-dep Python 3, 22 tools)
+agent.py             Advisor agent (monitor + analyze + auto-sync-if-safe)
+tui.py               Terminal dashboard (curses TUI)
+install.sh           Interactive installer (animated TUI)
+completions/         Shell completions (bash/zsh/fish)
+contrib/hooks/       Notification hook examples (Slack/Discord/Webhook)
+tests/test.sh        71 tests
+docs/                Documentation
+```
+
 ## Contributing
 
 Contributions are welcome. The entire CLI is a single bash script (`bingo-light`). The MCP server is a single Python file (`mcp-server.py`). No build step.
@@ -459,60 +463,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ## License
 
 [MIT](LICENSE)
-
----
-
-<details>
-<summary><b>简体中文</b></summary>
-
-## bingo-light -- AI 原生的 Fork 维护工具
-
-你维护了一个 Fork，添加了上游没有的功能。然后上游推送了 50 个 commit，你的 Fork 就卡住了。**bingo-light 解决这个问题** -- 你的补丁作为干净的栈叠在上游之上，同步只需一条命令。
-
-### 快速开始
-
-```bash
-# 安装
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
-
-# 初始化
-cd my-forked-project
-bingo-light init https://github.com/original/project.git
-
-# 创建补丁
-vim src/feature.py
-bingo-light patch new my-feature
-
-# 与上游同步（补丁自动变基到上游之上）
-bingo-light sync
-```
-
-### 核心特性
-
-- **MCP 服务器** -- 22 个工具覆盖从初始化到冲突解决的完整生命周期
-- **`--json`** -- 所有命令返回结构化 JSON
-- **`--yes`** -- 完全非交互模式，无需 TTY
-- **冲突分析** -- `conflict-analyze` 返回结构化冲突数据
-- **冲突解决** -- AI 通过 MCP 直接写入解决内容，自动继续 rebase
-- **单文件，零依赖** -- 只需 bash + git
-- **冲突记忆** -- git rerere 自动记住解决方案，同样的冲突只需解决一次
-- **一键撤销** -- `bingo-light undo` 恢复同步前状态
-
-### MCP 配置
-
-```json
-{
-  "mcpServers": {
-    "bingo-light": {
-      "command": "python3",
-      "args": ["/path/to/bingo-light/mcp-server.py"]
-    }
-  }
-}
-```
-
-配置后，AI 代理可以直接调用 22 个 MCP 工具管理你的 Fork。
-
-[完整文档](https://github.com/DanOps-1/bingo-light)
-
-</details>

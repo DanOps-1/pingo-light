@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="620" viewBox="0 0 850 620">
+  <style>
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes line1 { 0%,4%{opacity:0} 5%{opacity:1} }
+    @keyframes line2 { 0%,14%{opacity:0} 15%{opacity:1} }
+    @keyframes line3 { 0%,19%{opacity:0} 20%{opacity:1} }
+    @keyframes line4 { 0%,24%{opacity:0} 25%{opacity:1} }
+    @keyframes line5 { 0%,34%{opacity:0} 35%{opacity:1} }
+    @keyframes line6 { 0%,39%{opacity:0} 40%{opacity:1} }
+    @keyframes line7 { 0%,44%{opacity:0} 45%{opacity:1} }
+    @keyframes line8 { 0%,49%{opacity:0} 50%{opacity:1} }
+    @keyframes line9 { 0%,54%{opacity:0} 55%{opacity:1} }
+    @keyframes line10 { 0%,59%{opacity:0} 60%{opacity:1} }
+    @keyframes line11 { 0%,64%{opacity:0} 65%{opacity:1} }
+    @keyframes line12 { 0%,69%{opacity:0} 70%{opacity:1} }
+    @keyframes line13 { 0%,74%{opacity:0} 75%{opacity:1} }
+    @keyframes line14 { 0%,79%{opacity:0} 80%{opacity:1} }
+    @keyframes line15 { 0%,84%{opacity:0} 85%{opacity:1} }
+    @keyframes line16 { 0%,89%{opacity:0} 90%{opacity:1} }
+    .cursor { animation: blink 1s infinite; }
+    .l1 { animation: line1 12s infinite; }
+    .l2 { animation: line2 12s infinite; }
+    .l3 { animation: line3 12s infinite; }
+    .l4 { animation: line4 12s infinite; }
+    .l5 { animation: line5 12s infinite; }
+    .l6 { animation: line6 12s infinite; }
+    .l7 { animation: line7 12s infinite; }
+    .l8 { animation: line8 12s infinite; }
+    .l9 { animation: line9 12s infinite; }
+    .l10 { animation: line10 12s infinite; }
+    .l11 { animation: line11 12s infinite; }
+    .l12 { animation: line12 12s infinite; }
+    .l13 { animation: line13 12s infinite; }
+    .l14 { animation: line14 12s infinite; }
+    .l15 { animation: line15 12s infinite; }
+    .l16 { animation: line16 12s infinite; }
+    text { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace; }
+  </style>
+
+  <!-- Window frame -->
+  <rect width="850" height="620" rx="10" fill="#1a1b26"/>
+  <rect width="850" height="38" rx="10" fill="#24283b"/>
+  <rect y="28" width="850" height="10" fill="#24283b"/>
+
+  <!-- Window controls -->
+  <circle cx="24" cy="19" r="7" fill="#f7768e"/>
+  <circle cx="46" cy="19" r="7" fill="#e0af68"/>
+  <circle cx="68" cy="19" r="7" fill="#9ece6a"/>
+
+  <!-- Title bar -->
+  <text x="425" y="24" text-anchor="middle" fill="#565f89" font-size="13">bingo-light demo</text>
+
+  <!-- Terminal content -->
+  <g transform="translate(20, 58)" font-size="13.5">
+
+    <!-- Command 1: init -->
+    <text y="0" class="l1">
+      <tspan fill="#7aa2f7">$</tspan>
+      <tspan fill="#c0caf5"> bingo-light init https://github.com/torvalds/linux.git</tspan>
+    </text>
+    <text y="22" fill="#9ece6a" class="l2">  Initialized. Tracking upstream/main with 0 patches.</text>
+
+    <!-- Command 2: patch new -->
+    <text y="55" class="l3">
+      <tspan fill="#7aa2f7">$</tspan>
+      <tspan fill="#c0caf5"> bingo-light patch new custom-scheduler</tspan>
+    </text>
+    <text y="77" fill="#9ece6a" class="l4">  Patch created: custom-scheduler (3 files changed)</text>
+
+    <!-- Command 3: status -->
+    <text y="110" class="l5">
+      <tspan fill="#7aa2f7">$</tspan>
+      <tspan fill="#c0caf5"> bingo-light status</tspan>
+    </text>
+
+    <text y="143" fill="#bb9af7" class="l6">  bingo-light status</text>
+    <text y="160" fill="#565f89" class="l6">  ──────────────────────────────────────────────</text>
+
+    <text y="183" class="l7">
+      <tspan fill="#565f89">    Upstream  </tspan>
+      <tspan fill="#c0caf5">https://github.com/torvalds/linux.git</tspan>
+      <tspan fill="#565f89"> (main)</tspan>
+    </text>
+    <text y="205" class="l8">
+      <tspan fill="#565f89">    Behind    </tspan>
+      <tspan fill="#e0af68">47 commits</tspan>
+    </text>
+    <text y="227" class="l9">
+      <tspan fill="#565f89">    Patches   </tspan>
+      <tspan fill="#c0caf5">2 in stack</tspan>
+    </text>
+
+    <text y="258" class="l10">
+      <tspan fill="#565f89">    #1  </tspan>
+      <tspan fill="#7aa2f7">custom-scheduler  </tspan>
+      <tspan fill="#c0caf5">O(1) task scheduling    </tspan>
+      <tspan fill="#565f89">3 files</tspan>
+    </text>
+    <text y="280" class="l10">
+      <tspan fill="#565f89">    #2  </tspan>
+      <tspan fill="#7aa2f7">perf-monitoring   </tspan>
+      <tspan fill="#c0caf5">eBPF tracing hooks      </tspan>
+      <tspan fill="#565f89">5 files</tspan>
+    </text>
+
+    <text y="311" fill="#f7768e" class="l11">    Conflict risk</text>
+    <text y="333" class="l11">
+      <tspan fill="#565f89">      kernel/sched/core.c</tspan>
+      <tspan fill="#f7768e"> — modified by both upstream and patch #1</tspan>
+    </text>
+
+    <!-- Command 4: sync -->
+    <text y="370" class="l12">
+      <tspan fill="#7aa2f7">$</tspan>
+      <tspan fill="#c0caf5"> bingo-light sync</tspan>
+    </text>
+
+    <text y="392" fill="#c0caf5" class="l13">  Fetching upstream...</text>
+    <text y="414" fill="#c0caf5" class="l14">  Upstream: 47 new commits</text>
+    <text y="436" fill="#c0caf5" class="l14">  Rebasing 2 patches onto upstream...</text>
+    <text y="458" class="l15">
+      <tspan fill="#c0caf5">    [1/2] custom-scheduler </tspan>
+      <tspan fill="#565f89">.......... </tspan>
+      <tspan fill="#9ece6a">ok</tspan>
+    </text>
+    <text y="480" class="l15">
+      <tspan fill="#c0caf5">    [2/2] perf-monitoring  </tspan>
+      <tspan fill="#565f89">.......... </tspan>
+      <tspan fill="#9ece6a">ok</tspan>
+    </text>
+    <text y="510" fill="#9ece6a" class="l16">  Sync complete. 2 patches rebased onto 47 upstream commits.</text>
+
+    <!-- Cursor -->
+    <text y="543" class="l16">
+      <tspan fill="#7aa2f7">$</tspan>
+      <tspan fill="#c0caf5" class="cursor"> _</tspan>
+    </text>
+
+  </g>
+</svg>
