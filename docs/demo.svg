@@ -1,140 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="850" height="620" viewBox="0 0 850 620">
-  <style>
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-    @keyframes line1 { 0%,4%{opacity:0} 5%{opacity:1} }
-    @keyframes line2 { 0%,14%{opacity:0} 15%{opacity:1} }
-    @keyframes line3 { 0%,19%{opacity:0} 20%{opacity:1} }
-    @keyframes line4 { 0%,24%{opacity:0} 25%{opacity:1} }
-    @keyframes line5 { 0%,34%{opacity:0} 35%{opacity:1} }
-    @keyframes line6 { 0%,39%{opacity:0} 40%{opacity:1} }
-    @keyframes line7 { 0%,44%{opacity:0} 45%{opacity:1} }
-    @keyframes line8 { 0%,49%{opacity:0} 50%{opacity:1} }
-    @keyframes line9 { 0%,54%{opacity:0} 55%{opacity:1} }
-    @keyframes line10 { 0%,59%{opacity:0} 60%{opacity:1} }
-    @keyframes line11 { 0%,64%{opacity:0} 65%{opacity:1} }
-    @keyframes line12 { 0%,69%{opacity:0} 70%{opacity:1} }
-    @keyframes line13 { 0%,74%{opacity:0} 75%{opacity:1} }
-    @keyframes line14 { 0%,79%{opacity:0} 80%{opacity:1} }
-    @keyframes line15 { 0%,84%{opacity:0} 85%{opacity:1} }
-    @keyframes line16 { 0%,89%{opacity:0} 90%{opacity:1} }
-    .cursor { animation: blink 1s infinite; }
-    .l1 { animation: line1 12s infinite; }
-    .l2 { animation: line2 12s infinite; }
-    .l3 { animation: line3 12s infinite; }
-    .l4 { animation: line4 12s infinite; }
-    .l5 { animation: line5 12s infinite; }
-    .l6 { animation: line6 12s infinite; }
-    .l7 { animation: line7 12s infinite; }
-    .l8 { animation: line8 12s infinite; }
-    .l9 { animation: line9 12s infinite; }
-    .l10 { animation: line10 12s infinite; }
-    .l11 { animation: line11 12s infinite; }
-    .l12 { animation: line12 12s infinite; }
-    .l13 { animation: line13 12s infinite; }
-    .l14 { animation: line14 12s infinite; }
-    .l15 { animation: line15 12s infinite; }
-    .l16 { animation: line16 12s infinite; }
-    text { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace; }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="terminal" baseProfile="full" viewBox="0 0 704 444" width="704" version="1.1">
+    <defs>
+        <termtosvg:template_settings xmlns:termtosvg="https://github.com/nbedos/termtosvg">
+            <termtosvg:screen_geometry columns="88" rows="26"/>
+            <termtosvg:animation type="css"/>
+        </termtosvg:template_settings>
+        <style type="text/css" id="generated-style"><![CDATA[#screen {
+                font-family: 'DejaVu Sans Mono', monospace;
+                font-style: normal;
+                font-size: 14px;
+            }
 
-  <!-- Window frame -->
-  <rect width="850" height="620" rx="10" fill="#1a1b26"/>
-  <rect width="850" height="38" rx="10" fill="#24283b"/>
-  <rect y="28" width="850" height="10" fill="#24283b"/>
+        text {
+            dominant-baseline: text-before-edge;
+            white-space: pre;
+        }
+    
+            :root {
+                --animation-duration: 8273ms;
+            }
 
-  <!-- Window controls -->
-  <circle cx="24" cy="19" r="7" fill="#f7768e"/>
-  <circle cx="46" cy="19" r="7" fill="#e0af68"/>
-  <circle cx="68" cy="19" r="7" fill="#9ece6a"/>
+            @keyframes roll {
+                0.000%{transform:translateY(0px)}
+8.510%{transform:translateY(-476px)}
+20.633%{transform:translateY(-952px)}
+24.332%{transform:translateY(-1428px)}
+25.009%{transform:translateY(-1904px)}
+37.737%{transform:translateY(-2380px)}
+42.995%{transform:translateY(-2856px)}
+43.636%{transform:translateY(-3332px)}
+62.275%{transform:translateY(-3808px)}
+67.678%{transform:translateY(-4284px)}
+68.282%{transform:translateY(-4760px)}
+69.672%{transform:translateY(-5236px)}
+87.912%{transform:translateY(-5712px)}
+100.000%{transform:translateY(-5712px)}
+            }
 
-  <!-- Title bar -->
-  <text x="425" y="24" text-anchor="middle" fill="#565f89" font-size="13">bingo-light demo</text>
-
-  <!-- Terminal content -->
-  <g transform="translate(20, 58)" font-size="13.5">
-
-    <!-- Command 1: init -->
-    <text y="0" class="l1">
-      <tspan fill="#7aa2f7">$</tspan>
-      <tspan fill="#c0caf5"> bingo-light init https://github.com/torvalds/linux.git</tspan>
-    </text>
-    <text y="22" fill="#9ece6a" class="l2">  Initialized. Tracking upstream/main with 0 patches.</text>
-
-    <!-- Command 2: patch new -->
-    <text y="55" class="l3">
-      <tspan fill="#7aa2f7">$</tspan>
-      <tspan fill="#c0caf5"> bingo-light patch new custom-scheduler</tspan>
-    </text>
-    <text y="77" fill="#9ece6a" class="l4">  Patch created: custom-scheduler (3 files changed)</text>
-
-    <!-- Command 3: status -->
-    <text y="110" class="l5">
-      <tspan fill="#7aa2f7">$</tspan>
-      <tspan fill="#c0caf5"> bingo-light status</tspan>
-    </text>
-
-    <text y="143" fill="#bb9af7" class="l6">  bingo-light status</text>
-    <text y="160" fill="#565f89" class="l6">  ──────────────────────────────────────────────</text>
-
-    <text y="183" class="l7">
-      <tspan fill="#565f89">    Upstream  </tspan>
-      <tspan fill="#c0caf5">https://github.com/torvalds/linux.git</tspan>
-      <tspan fill="#565f89"> (main)</tspan>
-    </text>
-    <text y="205" class="l8">
-      <tspan fill="#565f89">    Behind    </tspan>
-      <tspan fill="#e0af68">47 commits</tspan>
-    </text>
-    <text y="227" class="l9">
-      <tspan fill="#565f89">    Patches   </tspan>
-      <tspan fill="#c0caf5">2 in stack</tspan>
-    </text>
-
-    <text y="258" class="l10">
-      <tspan fill="#565f89">    #1  </tspan>
-      <tspan fill="#7aa2f7">custom-scheduler  </tspan>
-      <tspan fill="#c0caf5">O(1) task scheduling    </tspan>
-      <tspan fill="#565f89">3 files</tspan>
-    </text>
-    <text y="280" class="l10">
-      <tspan fill="#565f89">    #2  </tspan>
-      <tspan fill="#7aa2f7">perf-monitoring   </tspan>
-      <tspan fill="#c0caf5">eBPF tracing hooks      </tspan>
-      <tspan fill="#565f89">5 files</tspan>
-    </text>
-
-    <text y="311" fill="#f7768e" class="l11">    Conflict risk</text>
-    <text y="333" class="l11">
-      <tspan fill="#565f89">      kernel/sched/core.c</tspan>
-      <tspan fill="#f7768e"> — modified by both upstream and patch #1</tspan>
-    </text>
-
-    <!-- Command 4: sync -->
-    <text y="370" class="l12">
-      <tspan fill="#7aa2f7">$</tspan>
-      <tspan fill="#c0caf5"> bingo-light sync</tspan>
-    </text>
-
-    <text y="392" fill="#c0caf5" class="l13">  Fetching upstream...</text>
-    <text y="414" fill="#c0caf5" class="l14">  Upstream: 47 new commits</text>
-    <text y="436" fill="#c0caf5" class="l14">  Rebasing 2 patches onto upstream...</text>
-    <text y="458" class="l15">
-      <tspan fill="#c0caf5">    [1/2] custom-scheduler </tspan>
-      <tspan fill="#565f89">.......... </tspan>
-      <tspan fill="#9ece6a">ok</tspan>
-    </text>
-    <text y="480" class="l15">
-      <tspan fill="#c0caf5">    [2/2] perf-monitoring  </tspan>
-      <tspan fill="#565f89">.......... </tspan>
-      <tspan fill="#9ece6a">ok</tspan>
-    </text>
-    <text y="510" fill="#9ece6a" class="l16">  Sync complete. 2 patches rebased onto 47 upstream commits.</text>
-
-    <!-- Cursor -->
-    <text y="543" class="l16">
-      <tspan fill="#7aa2f7">$</tspan>
-      <tspan fill="#c0caf5" class="cursor"> _</tspan>
-    </text>
-
-  </g>
+            #screen_view {
+                animation-duration: 8273ms;
+                animation-iteration-count:infinite;
+                animation-name:roll;
+                animation-timing-function: steps(1,end);
+                animation-fill-mode: forwards;
+            }
+        ]]></style>
+        <style type="text/css" id="user-style">
+            /* The colors defined below are the default 16 colors used for rendering text of the terminal. Adjust
+               them as needed.
+               PowerShell colors based on https://en.wikipedia.org/wiki/ANSI_escape_code#Colors */
+            .foreground {fill: #cccccc;}
+            .background {fill: #0c0c0c;}
+            .color0 {fill: #0c0c0c;}
+            .color1 {fill: #c50f1f;}
+            .color2 {fill: #13a10e;}
+            .color3 {fill: #c19c00;}
+            .color4 {fill: #0037da;}
+            .color5 {fill: #881798;}
+            .color6 {fill: #3a96dd;}
+            .color7 {fill: #cccccc;}
+            .color8 {fill: #767676;}
+            .color9 {fill: #e74856;}
+            .color10 {fill: #16c60c;}
+            .color11 {fill: #f9f1a5;}
+            .color12 {fill: #3b78ff;}
+            .color13 {fill: #b4009e;}
+            .color14 {fill: #61d6d6;}
+            .color15 {fill: #f2f2f2;}
+        </style>
+    </defs>
+    <svg id="screen" width="704" height="442" viewBox="0 0 704 442" preserveAspectRatio="xMidYMin slice">
+    <rect class="background" height="100%" width="100%" x="0" y="0"/><defs><g id="g1"><text x="0" textLength="296" class="foreground">$ bingo-light init /tmp/demo-upstream</text></g><g id="g2"><text x="0" textLength="8" class="background"> </text></g><g id="g3"><text x="0" textLength="216" class="foreground">OK bingo-light initialized!</text></g><g id="g4"><text x="0" textLength="320" class="foreground">  Upstream : /tmp/demo-upstream (master)</text></g><g id="g5"><text x="0" textLength="496" class="foreground">  Tracking : upstream-tracking (mirrors upstream, don't touch)</text></g><g id="g6"><text x="0" textLength="448" class="foreground">  Patches  : bingo-patches (your customizations go here)</text></g><g id="g7"><text x="0" textLength="376" class="foreground">$ echo "import redis; CACHE_TTL=300" &gt; cache.py</text></g><g id="g8"><text x="0" textLength="280" class="foreground">$ bingo-light patch new redis-cache</text></g><g id="g9"><text x="0" textLength="8" class="color4">&gt;</text><text x="8" textLength="616" class="foreground"> Using staged changes only. Unstaged changes will remain in the working tree.</text></g><g id="g10"><text x="0" textLength="520" class="foreground">[bingo-patches ba0c351] [bl] redis-cache: add Redis caching layer</text></g><g id="g11"><text x="0" textLength="248" class="foreground"> 1 file changed, 1 insertion(+)</text></g><g id="g12"><text x="0" textLength="224" class="foreground"> create mode 100644 cache.py</text></g><g id="g13"><text x="0" textLength="16" class="color2">OK</text><text x="16" textLength="64" class="foreground"> Patch '</text><text x="80" textLength="88" font-weight="bold" class="foreground">redis-cache</text><text x="168" textLength="152" class="foreground">' created (ba0c351)</text></g><g id="g14"><text x="0" textLength="256" class="foreground">  Patch stack: 1 patch(es) total</text></g><g id="g15"><text x="0" textLength="160" class="foreground">$ bingo-light status</text></g><g id="g16"><text x="0" textLength="144" font-weight="bold" class="foreground">bingo-light status</text></g><g id="g17"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="72" font-weight="bold" class="foreground">Upstream:</text><text x="88" textLength="160" class="foreground">  /tmp/demo-upstream</text></g><g id="g18"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="56" font-weight="bold" class="foreground">Branch:</text><text x="72" textLength="72" class="foreground">   master</text></g><g id="g19"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="64" font-weight="bold" class="foreground">Current:</text><text x="80" textLength="120" class="foreground">  bingo-patches</text></g><g id="g20"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="216" class="color3">3 commit(s) behind upstream</text></g><g id="g21"><text x="0" textLength="224" class="foreground">  Last synced: 4 seconds ago</text></g><g id="g22"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="64" font-weight="bold" class="foreground">Patches:</text><text x="80" textLength="16" class="foreground"> 1</text></g><g id="g23"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="16" class="color6"> 1</text><text x="32" textLength="560" class="foreground"> [bl] redis-cache: add Redis caching layer          ba0c351  1 file(s)</text></g><g id="g24"><text x="0" textLength="16" class="foreground">  </text><text x="16" textLength="80" class="color2">No overlap</text><text x="96" textLength="344" class="foreground"> between your patches and upstream changes.</text></g><g id="g25"><text x="0" textLength="184" class="foreground">  Sync should be clean.</text></g><g id="g26"><text x="0" textLength="144" class="foreground">$ bingo-light sync</text></g><g id="g27"><text x="0" textLength="192" font-weight="bold" class="foreground">Syncing with upstream...</text></g><g id="g28"><text x="0" textLength="8" class="color4">&gt;</text><text x="8" textLength="336" class="foreground"> Fetching upstream (/tmp/demo-upstream)...</text></g><g id="g29"><text x="0" textLength="8" class="color4">&gt;</text><text x="8" textLength="112" class="foreground"> Upstream has </text><text x="120" textLength="8" font-weight="bold" class="foreground">3</text><text x="128" textLength="120" class="foreground"> new commit(s).</text></g><g id="g30"><text x="0" textLength="8" class="color4">&gt;</text><text x="8" textLength="80" class="foreground"> You have </text><text x="88" textLength="8" font-weight="bold" class="foreground">1</text><text x="96" textLength="168" class="foreground"> patch(es) to rebase.</text></g><g id="g31"><text x="0" textLength="8" class="color4">&gt;</text><text x="8" textLength="224" class="foreground"> Updating tracking branch...</text></g><g id="g32"><text x="0" textLength="8" class="color4">&gt;</text><text x="8" textLength="304" class="foreground"> Rebasing patches onto new upstream...</text></g><g id="g33"><text x="0" textLength="464" class="foreground">Successfully rebased and updated refs/heads/bingo-patches.</text></g><g id="g34"><text x="0" textLength="16" class="color2">OK</text><text x="16" textLength="384" class="foreground"> Sync complete! All 1 patch(es) rebased cleanly.</text></g><g id="g35"><text x="0" textLength="312" class="foreground">  You are now up to date with upstream.</text></g><g id="g36"><text x="0" textLength="216" class="foreground">Done! Your fork is in sync.</text></g></defs><g id="screen_view"><g><use xlink:href="#g1" y="0"/><rect x="0" y="17" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="17"/></g><g><use xlink:href="#g1" y="476"/><use xlink:href="#g3" y="493"/><use xlink:href="#g4" y="510"/><use xlink:href="#g5" y="527"/><use xlink:href="#g6" y="544"/><rect x="0" y="561" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="561"/></g><g><use xlink:href="#g1" y="952"/><use xlink:href="#g3" y="969"/><use xlink:href="#g4" y="986"/><use xlink:href="#g5" y="1003"/><use xlink:href="#g6" y="1020"/><use xlink:href="#g7" y="1054"/><rect x="0" y="1071" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="1071"/></g><g><use xlink:href="#g1" y="1428"/><use xlink:href="#g3" y="1445"/><use xlink:href="#g4" y="1462"/><use xlink:href="#g5" y="1479"/><use xlink:href="#g6" y="1496"/><use xlink:href="#g7" y="1530"/><use xlink:href="#g8" y="1547"/><rect x="0" y="1564" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="1564"/></g><g><use xlink:href="#g1" y="1904"/><use xlink:href="#g3" y="1921"/><use xlink:href="#g4" y="1938"/><use xlink:href="#g5" y="1955"/><use xlink:href="#g6" y="1972"/><use xlink:href="#g7" y="2006"/><use xlink:href="#g8" y="2023"/><use xlink:href="#g9" y="2040"/><use xlink:href="#g10" y="2057"/><use xlink:href="#g11" y="2074"/><use xlink:href="#g12" y="2091"/><use xlink:href="#g13" y="2125"/><use xlink:href="#g14" y="2142"/><rect x="0" y="2159" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="2159"/></g><g><use xlink:href="#g1" y="2380"/><use xlink:href="#g3" y="2397"/><use xlink:href="#g4" y="2414"/><use xlink:href="#g5" y="2431"/><use xlink:href="#g6" y="2448"/><use xlink:href="#g7" y="2482"/><use xlink:href="#g8" y="2499"/><use xlink:href="#g9" y="2516"/><use xlink:href="#g10" y="2533"/><use xlink:href="#g11" y="2550"/><use xlink:href="#g12" y="2567"/><use xlink:href="#g13" y="2601"/><use xlink:href="#g14" y="2618"/><use xlink:href="#g15" y="2652"/><rect x="0" y="2669" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="2669"/></g><g><use xlink:href="#g4" y="2856"/><use xlink:href="#g5" y="2873"/><use xlink:href="#g6" y="2890"/><use xlink:href="#g7" y="2924"/><use xlink:href="#g8" y="2941"/><use xlink:href="#g9" y="2958"/><use xlink:href="#g10" y="2975"/><use xlink:href="#g11" y="2992"/><use xlink:href="#g12" y="3009"/><use xlink:href="#g13" y="3043"/><use xlink:href="#g14" y="3060"/><use xlink:href="#g15" y="3094"/><use xlink:href="#g16" y="3128"/><use xlink:href="#g17" y="3162"/><use xlink:href="#g18" y="3179"/><use xlink:href="#g19" y="3196"/><use xlink:href="#g20" y="3230"/><use xlink:href="#g21" y="3247"/><rect x="0" y="3281" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="3281"/></g><g><use xlink:href="#g10" y="3332"/><use xlink:href="#g11" y="3349"/><use xlink:href="#g12" y="3366"/><use xlink:href="#g13" y="3400"/><use xlink:href="#g14" y="3417"/><use xlink:href="#g15" y="3451"/><use xlink:href="#g16" y="3485"/><use xlink:href="#g17" y="3519"/><use xlink:href="#g18" y="3536"/><use xlink:href="#g19" y="3553"/><use xlink:href="#g20" y="3587"/><use xlink:href="#g21" y="3604"/><use xlink:href="#g22" y="3638"/><use xlink:href="#g23" y="3672"/><use xlink:href="#g24" y="3706"/><use xlink:href="#g25" y="3723"/><rect x="0" y="3757" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="3757"/></g><g><use xlink:href="#g12" y="3808"/><use xlink:href="#g13" y="3842"/><use xlink:href="#g14" y="3859"/><use xlink:href="#g15" y="3893"/><use xlink:href="#g16" y="3927"/><use xlink:href="#g17" y="3961"/><use xlink:href="#g18" y="3978"/><use xlink:href="#g19" y="3995"/><use xlink:href="#g20" y="4029"/><use xlink:href="#g21" y="4046"/><use xlink:href="#g22" y="4080"/><use xlink:href="#g23" y="4114"/><use xlink:href="#g24" y="4148"/><use xlink:href="#g25" y="4165"/><use xlink:href="#g26" y="4216"/><rect x="0" y="4233" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="4233"/></g><g><use xlink:href="#g16" y="4284"/><use xlink:href="#g17" y="4318"/><use xlink:href="#g18" y="4335"/><use xlink:href="#g19" y="4352"/><use xlink:href="#g20" y="4386"/><use xlink:href="#g21" y="4403"/><use xlink:href="#g22" y="4437"/><use xlink:href="#g23" y="4471"/><use xlink:href="#g24" y="4505"/><use xlink:href="#g25" y="4522"/><use xlink:href="#g26" y="4573"/><use xlink:href="#g27" y="4607"/><use xlink:href="#g28" y="4641"/><use xlink:href="#g29" y="4658"/><use xlink:href="#g30" y="4675"/><rect x="0" y="4709" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="4709"/></g><g><use xlink:href="#g19" y="4760"/><use xlink:href="#g20" y="4794"/><use xlink:href="#g21" y="4811"/><use xlink:href="#g22" y="4845"/><use xlink:href="#g23" y="4879"/><use xlink:href="#g24" y="4913"/><use xlink:href="#g25" y="4930"/><use xlink:href="#g26" y="4981"/><use xlink:href="#g27" y="5015"/><use xlink:href="#g28" y="5049"/><use xlink:href="#g29" y="5066"/><use xlink:href="#g30" y="5083"/><use xlink:href="#g31" y="5117"/><use xlink:href="#g32" y="5134"/><use xlink:href="#g33" y="5168"/><rect x="0" y="5185" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="5185"/></g><g><use xlink:href="#g21" y="5236"/><use xlink:href="#g22" y="5270"/><use xlink:href="#g23" y="5304"/><use xlink:href="#g24" y="5338"/><use xlink:href="#g25" y="5355"/><use xlink:href="#g26" y="5406"/><use xlink:href="#g27" y="5440"/><use xlink:href="#g28" y="5474"/><use xlink:href="#g29" y="5491"/><use xlink:href="#g30" y="5508"/><use xlink:href="#g31" y="5542"/><use xlink:href="#g32" y="5559"/><use xlink:href="#g33" y="5593"/><use xlink:href="#g34" y="5627"/><use xlink:href="#g35" y="5644"/><rect x="0" y="5661" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="5661"/></g><g><use xlink:href="#g22" y="5712"/><use xlink:href="#g23" y="5746"/><use xlink:href="#g24" y="5780"/><use xlink:href="#g25" y="5797"/><use xlink:href="#g26" y="5848"/><use xlink:href="#g27" y="5882"/><use xlink:href="#g28" y="5916"/><use xlink:href="#g29" y="5933"/><use xlink:href="#g30" y="5950"/><use xlink:href="#g31" y="5984"/><use xlink:href="#g32" y="6001"/><use xlink:href="#g33" y="6035"/><use xlink:href="#g34" y="6069"/><use xlink:href="#g35" y="6086"/><use xlink:href="#g36" y="6120"/><rect x="0" y="6137" width="8" height="17" class="foreground"/><use xlink:href="#g2" y="6137"/></g></g></svg>
 </svg>
