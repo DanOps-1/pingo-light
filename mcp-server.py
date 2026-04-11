@@ -503,9 +503,8 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         return run_bl(["diff"], cwd)
 
     elif name == "bingo_auto_sync":
-        schedule_map = {"daily": "1", "6h": "2", "weekly": "3"}
-        choice = schedule_map.get(arguments.get("schedule", "daily"), "1")
-        return run_bl(["auto-sync"], cwd, input_text=f"{choice}\n")
+        schedule = arguments.get("schedule", "daily")
+        return run_bl(["auto-sync"], cwd, env_extra={"BINGO_SCHEDULE": schedule})
 
     elif name == "bingo_conflict_analyze":
         return run_bl(["conflict-analyze"], cwd)
@@ -560,7 +559,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     elif name == "bingo_patch_meta":
         args = ["patch", "meta", arguments["name"]]
         if arguments.get("set_field") and arguments.get("value"):
-            args += [f"--set-{arguments['set_field']}", arguments["value"]]
+            args += [f"--set-{arguments['set_field'].replace('_', '-')}", arguments["value"]]
         return run_bl(args, cwd)
 
     elif name == "bingo_patch_squash":
