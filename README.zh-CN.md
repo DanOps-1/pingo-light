@@ -74,9 +74,19 @@ bingo-light sync
 
 ## 演示
 
+### 基本流程：初始化、创建补丁、同步
+
 <p align="center">
-  <img src="docs/demo.svg" alt="bingo-light demo" width="850">
+  <img src="docs/demo.svg" alt="bingo-light 基本演示" width="850">
 </p>
+
+### 冲突解决：同步、分析、修复
+
+<p align="center">
+  <img src="docs/demo-conflict.svg" alt="bingo-light 冲突解决演示" width="850">
+</p>
+
+> AI 调用 `conflict-analyze --json`，读取结构化的 ours/theirs 数据，写入合并后的文件，rebase 自动继续。全程不需要人。
 
 ### AI 获取结构化 JSON
 

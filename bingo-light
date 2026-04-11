@@ -147,7 +147,7 @@ patches_base() {
 # tracking branch may be stale. Detect and fix.
 _fix_stale_tracking() {
     [[ -d .git/rebase-merge || -d .git/rebase-apply ]] && return  # don't touch during active rebase
-    [[ -f .bingo/.undo-head ]] && return  # don't auto-fix after undo (user intentionally rolled back)
+    [[ -f .bingo/.undo-active ]] && return  # don't auto-fix after undo (user intentionally rolled back)
     local tracking_pos patches_base_pos upstream_pos
     tracking_pos=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null) || return
     upstream_pos=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null) || return
@@ -1075,6 +1075,7 @@ cmd_sync() {
     mkdir -p .bingo
     echo "$saved_head" > .bingo/.undo-head
     echo "$saved_tracking" > .bingo/.undo-tracking
+    rm -f .bingo/.undo-active  # Clear undo marker — new sync starts a new cycle
 
     # 7. Update tracking branch
     info "Updating tracking branch..."
@@ -1631,8 +1632,8 @@ cmd_undo() {
         git branch -f "$TRACKING_BRANCH" "$prev_tracking" &>/dev/null
         rm -f .bingo/.undo-tracking
     fi
-    # Keep .undo-head as a marker to prevent _fix_stale_tracking from
-    # auto-advancing tracking. It gets overwritten on next sync.
+    # Mark that undo happened — prevents _fix_stale_tracking from re-advancing tracking
+    touch .bingo/.undo-active
 
     if [[ "$JSON_MODE" == true ]]; then
         json_out '{"ok":true,"restored_to":"'"$prev_head"'"}'

@@ -60,6 +60,22 @@ bingo-light sync
 
 That's it. Three commands and your fork stays in sync forever.
 
+## Demo
+
+### Basic workflow: init, patch, sync
+
+<p align="center">
+  <img src="docs/demo.svg" alt="bingo-light basic demo" width="850">
+</p>
+
+### Conflict resolution: sync, analyze, resolve
+
+<p align="center">
+  <img src="docs/demo-conflict.svg" alt="bingo-light conflict resolution demo" width="850">
+</p>
+
+> The AI calls `conflict-analyze --json`, reads the structured ours/theirs data, writes the merged file, and the rebase continues. No human needed.
+
 ---
 
 ## Key Features
