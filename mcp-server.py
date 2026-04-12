@@ -646,43 +646,79 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 _PARSE_ERROR = object()  # Sentinel: bad message, but not EOF
 
 
-def read_message() -> dict | None:
+def read_message():
     """Read a JSON-RPC message from stdin (MCP stdio transport).
-    Returns dict on success, None on EOF, _PARSE_ERROR on bad input."""
+
+    Supports two framing modes:
+    - Content-Length header framing (standard MCP spec)
+    - Bare JSON lines (used by Claude Code 2.x)
+
+    Returns dict on success, None on EOF, _PARSE_ERROR on bad input.
+    """
+    line = sys.stdin.readline()
+    if not line:
+        return None  # EOF
+
+    stripped = line.strip()
+    if not stripped:
+        # Empty line — skip and retry
+        return _PARSE_ERROR
+
+    # Bare JSON line mode (no Content-Length header)
+    if stripped.startswith("{"):
+        global _use_bare_json
+        _use_bare_json = True
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            return _PARSE_ERROR
+
+    # Content-Length header framing mode
     headers = {}
+    if ":" in stripped:
+        key, value = stripped.split(":", 1)
+        headers[key.strip().lower()] = value.strip()
+
     while True:
-        line = sys.stdin.readline()
-        if not line:
-            return None  # EOF
-        line = line.strip()
-        if line == "":
-            break  # End of headers
-        if ":" in line:
-            key, value = line.split(":", 1)
+        hline = sys.stdin.readline()
+        if not hline:
+            return None
+        hline = hline.strip()
+        if hline == "":
+            break
+        if ":" in hline:
+            key, value = hline.split(":", 1)
             headers[key.strip().lower()] = value.strip()
 
     try:
         content_length = int(headers.get("content-length", 0))
     except (ValueError, TypeError):
         return _PARSE_ERROR
-    if content_length <= 0 or content_length > 10 * 1024 * 1024:  # 10MB max
+    if content_length <= 0 or content_length > 10 * 1024 * 1024:
         return _PARSE_ERROR
 
     body = sys.stdin.read(content_length)
     if len(body) < content_length:
-        return _PARSE_ERROR  # truncated read — discard to protect stream
+        return _PARSE_ERROR
     try:
         return json.loads(body)
     except json.JSONDecodeError:
         return _PARSE_ERROR
 
 
+# Auto-detect framing mode based on first message received
+_use_bare_json = False
+
+
 def send_message(msg: dict):
     """Write a JSON-RPC message to stdout (MCP stdio transport)."""
     body = json.dumps(msg)
-    header = f"Content-Length: {len(body.encode())}\r\n\r\n"
-    sys.stdout.write(header)
-    sys.stdout.write(body)
+    if _use_bare_json:
+        sys.stdout.write(body + "\n")
+    else:
+        header = f"Content-Length: {len(body.encode())}\r\n\r\n"
+        sys.stdout.write(header)
+        sys.stdout.write(body)
     sys.stdout.flush()
 
 
@@ -708,8 +744,10 @@ def main():
         params = msg.get("params", {})
 
         if method == "initialize":
+            # Echo back the client's protocol version for compatibility
+            client_version = params.get("protocolVersion", "2024-11-05")
             send_message(make_response(id, {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": client_version,
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "bingo-light",
