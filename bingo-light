@@ -517,6 +517,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pp_reorder = patch_sub.add_parser("reorder", add_help=False)
     pp_reorder.add_argument("--order", default="")
+    pp_reorder.add_argument("order_positional", nargs="?", default="")
 
     pp_squash = patch_sub.add_parser("squash", add_help=False)
     pp_squash.add_argument("idx1", type=int)
@@ -652,7 +653,8 @@ def _dispatch_patch(args: argparse.Namespace, repo: Repo) -> dict:
         return repo.patch_import(args.import_path)
 
     if pcmd == "reorder":
-        return repo.patch_reorder(order=args.order)
+        order = args.order or getattr(args, "order_positional", "")
+        return repo.patch_reorder(order=order)
 
     if pcmd == "squash":
         return repo.patch_squash(args.idx1, args.idx2)
