@@ -57,7 +57,13 @@ json_escape() {
     # Escape special characters for JSON string values
     # Uses awk (not sed) to avoid GNU sed N-at-EOF bug on single-line input
     awk 'BEGIN{ORS=""} {
-        gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/,"\\t"); gsub(/\r/,"")
+        gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/,"\\t"); gsub(/\r/,"\\r")
+        # Escape remaining control chars (0x00-0x1f except \t=9, \n=10, \r=13)
+        for(i=0;i<32;i++) {
+            if(i==9||i==10||i==13) continue
+            c=sprintf("%c",i)
+            if(index($0,c)) gsub(c, sprintf("\\u%04x",i))
+        }
         if(NR>1) printf "\\n"
         printf "%s",$0
     }'
@@ -268,7 +274,7 @@ cmd_init() {
         local ahead=0
         local merge_base
         if merge_base=$(git merge-base "upstream/$UPSTREAM_BRANCH" HEAD 2>/dev/null); then
-            ahead=$(git rev-list --count "$merge_base..HEAD")
+            ahead=$(git rev-list --count "$merge_base..HEAD" 2>/dev/null || echo 0)
         fi
 
         if [[ "$ahead" -gt 0 ]]; then
@@ -387,6 +393,9 @@ patch_new() {
     fi
 
     # Validate name (alphanumeric, hyphens, underscores)
+    if [[ ${#name} -gt 100 ]]; then
+        fatal "Patch name too long (max 100 characters)."
+    fi
     if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
         fatal "Invalid patch name. Use letters, numbers, hyphens, underscores. Must start with a letter or number."
     fi
@@ -539,7 +548,7 @@ END { if (n>0) emit(); else printf "["; printf "]" }
         fi
 
         # Get change stats
-        files_changed=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
+        files_changed=$(git diff-tree --no-commit-id -r "$hash" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
         stat_summary=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //')
 
         # Color the index
@@ -601,10 +610,11 @@ patch_show() {
         raw_subj=$(git log -1 --format="%s" "$hash")
         [[ "$raw_subj" =~ ^\[bl\]\ ([^:]+): ]] && pname="${BASH_REMATCH[1]}"
         stat=$(git diff-tree --no-commit-id --shortstat "$hash" 2>/dev/null | sed 's/^ //' | json_escape)
-        diff_content=$(git diff-tree --no-commit-id -p "$hash" | json_escape)
+        diff_content=$(git diff-tree --no-commit-id -p "$hash" 2>/dev/null | json_escape)
         diff_len=${#diff_content}
         if [[ $diff_len -gt 50000 ]]; then
             local preview="${diff_content:0:2000}"
+            preview="${preview%\\}"
             local size_kb=$(( diff_len / 1024 ))
             json_out '{"ok":true,"truncated":true,"patch":{"name":"'"$(echo "$pname" | json_escape)"'","hash":"'"$short_hash"'","subject":"'"$subject"'","stat":"'"$stat"'","preview":"'"$preview"'","full_size":'"$diff_len"',"message":"Diff too large ('"$size_kb"'KB). Showing preview. Use bingo-light patch show without --json for full output."}}'
         else
@@ -730,7 +740,7 @@ patch_export() {
     }
 
     local count
-    count=$(git rev-list --count "$base..$PATCHES_BRANCH")
+    count=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
 
     if [[ "$count" -eq 0 ]]; then
         if [[ "$JSON_MODE" == true ]]; then
@@ -864,7 +874,7 @@ patch_reorder() {
     }
 
     local count
-    count=$(git rev-list --count "$base..$PATCHES_BRANCH")
+    count=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
     if [[ "$count" -le 1 ]]; then
         if [[ "$JSON_MODE" == true ]]; then json_out '{"ok":true,"message":"only one patch"}'; else info "Only one patch, nothing to reorder."; fi
         return 0
@@ -999,7 +1009,7 @@ cmd_sync() {
     fi
 
     local behind
-    behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH")
+    behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo 0)
 
     info "Upstream has ${BOLD}${behind}${RESET} new commit(s)."
 
@@ -1077,7 +1087,7 @@ cmd_sync() {
     local saved_head
     saved_head=$(git rev-parse HEAD)
     local saved_tracking
-    saved_tracking=$(git rev-parse "$TRACKING_BRANCH")
+    saved_tracking=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null)
 
     # Persist for undo command (don't rely on reflog — it expires)
     mkdir -p .bingo
@@ -1133,7 +1143,7 @@ cmd_sync() {
         [[ "$JSON_MODE" != true ]] && [[ -n "$rebase_output" ]] && echo "$rebase_output"
         # Check if rerere auto-resolved all conflicts
         local unresolved
-        unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+        unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
         if [[ -z "$unresolved" ]]; then
             # rerere resolved everything! Auto-continue the rebase.
             info "rerere auto-resolved conflicts, continuing rebase..."
@@ -1150,7 +1160,7 @@ cmd_sync() {
                     break  # rebase done
                 fi
                 # Check again if rerere resolved the new conflict
-                unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+                unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
                 if [[ -n "$unresolved" ]]; then
                     rerere_ok=false
                     break  # real unresolved conflict
@@ -1178,7 +1188,7 @@ cmd_sync() {
         run_hooks "on-conflict" '{"patch_count":'"$patch_count"'}'
         if [[ "$JSON_MODE" == true ]]; then
             local conflicted_files_raw
-            conflicted_files_raw=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+            conflicted_files_raw=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
             local cf_json="["
             local cf_first=true
             while IFS= read -r cf; do
@@ -1245,7 +1255,7 @@ cmd_smart_sync() {
     fi
 
     local behind
-    behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH")
+    behind=$(git rev-list --count "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null || echo 0)
     local patch_count
     patch_count=$(count_patches)
 
@@ -1254,7 +1264,7 @@ cmd_smart_sync() {
     # Step 2: Save state for rollback
     local saved_head saved_tracking
     saved_head=$(git rev-parse HEAD)
-    saved_tracking=$(git rev-parse "$TRACKING_BRANCH")
+    saved_tracking=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null)
     mkdir -p .bingo
     echo "$saved_head" > .bingo/.undo-head
     echo "$saved_tracking" > .bingo/.undo-tracking
@@ -1296,7 +1306,7 @@ cmd_smart_sync() {
 
         # Check for unresolved conflicts
         local unresolved
-        unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+        unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
 
         if [[ -z "$unresolved" ]]; then
             # rerere resolved everything in this step
@@ -1305,7 +1315,7 @@ cmd_smart_sync() {
                 continue  # May have more patches to apply
             fi
             # Continue failed — check for new conflicts
-            unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null)
+            unresolved=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u 2>/dev/null || true)
             [[ -z "$unresolved" ]] && continue
         fi
 
@@ -1341,7 +1351,7 @@ cmd_smart_sync() {
 
             local current_patch_info=""
             if [[ -f .git/rebase-merge/message ]]; then
-                current_patch_info=$(head -1 .git/rebase-merge/message | json_escape)
+                current_patch_info=$(head -1 .git/rebase-merge/message 2>/dev/null | json_escape)
             fi
             json_out '{"ok":false,"action":"needs_human","behind_before":'"$behind"',"conflicts_auto_resolved":'"$conflicts_resolved"',"current_patch":"'"$current_patch_info"'","remaining_conflicts":'"$cf_json"',"resolution_steps":["1. Read ours/theirs for each conflict","2. Write merged content to the file","3. git add <file>","4. git rebase --continue","5. Run bingo-light smart-sync again to continue"],"abort_cmd":"git rebase --abort","next":"For each conflict: read merge_hint, write merged file, git add, git rebase --continue"}'
         else
@@ -1414,7 +1424,7 @@ cmd_status() {
     # Patch stack
     local base patch_count
     if base=$(patches_base); then
-        patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH")
+        patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
     else
         patch_count=0
     fi
@@ -1431,7 +1441,7 @@ cmd_status() {
             local short_hash subject files_count
             short_hash=$(git rev-parse --short "$hash")
             subject=$(git log -1 --format="%s" "$hash")
-            files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
+            files_count=$(git diff-tree --no-commit-id -r "$hash" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
 
             printf "  ${CYAN}%2d${RESET} %-50s ${DIM}%s  %d file(s)${RESET}\n" \
                 "$index" "$subject" "$short_hash" "$files_count"
@@ -1444,8 +1454,8 @@ cmd_status() {
     if [[ "$tracking_head" != "$upstream_head" && "$patch_count" -gt 0 ]]; then
         # Check if files touched by patches were also changed upstream
         local patch_files upstream_files overlap
-        patch_files=$(git diff --name-only "$base..$PATCHES_BRANCH" 2>/dev/null | sort)
-        upstream_files=$(git diff --name-only "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null | sort)
+        patch_files=$(git diff --name-only "$base..$PATCHES_BRANCH" 2>/dev/null | sort || true)
+        upstream_files=$(git diff --name-only "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null | sort || true)
 
         if [[ -n "$patch_files" && -n "$upstream_files" ]]; then
             overlap=$(comm -12 <(echo "$patch_files") <(echo "$upstream_files"))
@@ -1547,7 +1557,7 @@ cmd_doctor() {
             return 0
         }
         local patch_count
-        patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH")
+        patch_count=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
         if [[ "$patch_count" -eq 0 ]]; then
             _check "patch_stack" "pass" "no patches"
         else
@@ -1821,11 +1831,12 @@ cmd_diff() {
 
     if [[ "$JSON_MODE" == true ]]; then
         local stat diff_content diff_len
-        stat=$(git diff "$base..$PATCHES_BRANCH" --stat | json_escape)
-        diff_content=$(git diff "$base..$PATCHES_BRANCH" | json_escape)
+        stat=$(git diff "$base..$PATCHES_BRANCH" --stat 2>/dev/null | json_escape)
+        diff_content=$(git diff "$base..$PATCHES_BRANCH" 2>/dev/null | json_escape)
         diff_len=${#diff_content}
         if [[ $diff_len -gt 50000 ]]; then
             local preview="${diff_content:0:2000}"
+            preview="${preview%\\}"
             local size_kb=$(( diff_len / 1024 ))
             json_out '{"ok":true,"truncated":true,"stat":"'"$stat"'","preview":"'"$preview"'","full_size":'"$diff_len"',"message":"Diff too large ('"$size_kb"'KB). Showing preview. Use bingo-light diff without --json for full output."}'
         else
@@ -1888,8 +1899,8 @@ cmd_conflict_analyze() {
 
             # Extract conflict sections
             local ours theirs
-            ours=$(sed -n '/^<<<<<<</,/^=======/{ /^<<<<<<</d; /^=======/d; p; }' "$file" | sed '/^|||||||/,$d' | json_escape)
-            theirs=$(sed -n '/^=======/,/^>>>>>>>/{ /^=======/d; /^>>>>>>>/d; p; }' "$file" | json_escape)
+            ours=$(sed -n '/^<<<<<<</,/^=======/{ /^<<<<<<</d; /^=======/d; p; }' "$file" 2>/dev/null | sed '/^|||||||/,$d' | json_escape)
+            theirs=$(sed -n '/^=======/,/^>>>>>>>/{ /^=======/d; /^>>>>>>>/d; p; }' "$file" 2>/dev/null | json_escape)
             local conflict_count
             conflict_count=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo 0)
 
@@ -1987,8 +1998,8 @@ END { if (n>0) printf "%s\t%s\t%s\t%d\n", name, hash, subj, files }
     local overlap=""
     if [[ "$behind" -gt 0 && "$patch_count" -gt 0 && -n "$base" ]]; then
         local patch_files upstream_files
-        patch_files=$(git diff --name-only "$base..$PATCHES_BRANCH" 2>/dev/null | sort)
-        upstream_files=$(git diff --name-only "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null | sort)
+        patch_files=$(git diff --name-only "$base..$PATCHES_BRANCH" 2>/dev/null | sort || true)
+        upstream_files=$(git diff --name-only "$TRACKING_BRANCH..upstream/$UPSTREAM_BRANCH" 2>/dev/null | sort || true)
         if [[ -n "$patch_files" && -n "$upstream_files" ]]; then
             overlap=$(comm -12 <(echo "$patch_files") <(echo "$upstream_files"))
         fi
@@ -2257,6 +2268,7 @@ patch_squash() {
     # Use GIT_SEQUENCE_EDITOR to programmatically squash (macOS + Linux compatible)
     local script
     script=$(mktemp)
+    trap 'rm -f "$script"' RETURN
     cat > "$script" << EOF
 #!/bin/bash
 # Change pick on line $idx2 to squash (portable: no sed -i)
@@ -2265,14 +2277,12 @@ EOF
     chmod +x "$script"
 
     if GIT_SEQUENCE_EDITOR="$script" git rebase -i "$base" &>/dev/null; then
-        rm -f "$script"
         if [[ "$JSON_MODE" == true ]]; then
             json_out '{"ok":true,"squashed":['"$idx1"','"$idx2"']}'
         else
             success "Patches $idx1 and $idx2 squashed."
         fi
     else
-        rm -f "$script"
         git rebase --abort &>/dev/null || true
         fatal "Failed to squash patches."
     fi
@@ -2302,6 +2312,7 @@ patch_reorder_noninteractive() {
     # Generate a GIT_SEQUENCE_EDITOR script that reorders pick lines
     local editor_script
     editor_script=$(mktemp)
+    trap 'rm -f "$editor_script"' RETURN
     printf '%s' "$order_str" | python3 -c "
 import sys
 order = [int(x.strip()) for x in sys.stdin.read().strip().split(',')]
@@ -2318,14 +2329,12 @@ print(script)
     chmod +x "$editor_script"
 
     if GIT_SEQUENCE_EDITOR="bash $editor_script" git rebase -i "$base" &>/dev/null; then
-        rm -f "$editor_script"
         if [[ "$JSON_MODE" == true ]]; then
             json_out '{"ok":true,"reordered":"'"$(echo "$order_str" | json_escape)"'"}'
         else
             success "Patches reordered: $order_str"
         fi
     else
-        rm -f "$editor_script"
         git rebase --abort &>/dev/null || true
         fatal "Failed to reorder patches."
     fi
@@ -2644,7 +2653,7 @@ cmd_session() {
             while IFS= read -r hash; do
                 local subject files_count
                 subject=$(git log -1 --format="%s" "$hash")
-                files_count=$(git diff-tree --no-commit-id -r "$hash" | wc -l | tr -d ' ')
+                files_count=$(git diff-tree --no-commit-id -r "$hash" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
                 patch_list+="$(printf '%d. %s (%d file(s))' "$index" "$subject" "$files_count")"$'\n'
                 ((index++))
             done <<< "$(git rev-list --reverse "$base..$PATCHES_BRANCH")"

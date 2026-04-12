@@ -398,6 +398,11 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
         save_state(cwd, state)
         return {"action": "error", "success": False, "details": f"Status failed: {status}"}
 
+    if status.get("in_rebase"):
+        save_state(cwd, state)
+        return {"action": "conflict_in_progress", "success": False, "status": status,
+                "details": "A rebase is already in progress. Resolve conflicts or abort before running the agent."}
+
     behind = status.get("behind", 0)
     patch_count = status.get("patch_count", 0)
     conflict_risk = status.get("conflict_risk", [])
@@ -447,9 +452,8 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
         # SAFE: no overlap, auto-sync
         log("SAFE-ACT: no conflict risk, syncing...")
         bingo_result = run_bl(["sync"], cwd)
-        raw = bingo_result.get("raw", "")
 
-        if bingo_result.get("ok") or "Sync complete" in raw or "up to date" in raw.lower():
+        if bingo_result.get("ok"):
             log("  synced successfully!")
             state["last_sync"] = datetime.now(timezone.utc).isoformat()
             state["sync_count"] = state.get("sync_count", 0) + 1
@@ -469,14 +473,12 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
         # RISKY: try dry-run first
         log("CAUTION: overlap detected, testing with dry-run...")
         dry_result = run_bl(["sync", "--dry-run"], cwd)
-        dry_raw = dry_result.get("raw", "")
 
-        if "succeed cleanly" in dry_raw.lower():
+        if dry_result.get("clean", False):
             # Dry-run passed! Safe to sync despite overlap
             log("  dry-run clean, syncing...")
             bingo_result = run_bl(["sync"], cwd)
-            raw = bingo_result.get("raw", "")
-            if bingo_result.get("ok") or "Sync complete" in raw:
+            if bingo_result.get("ok"):
                 state["last_sync"] = datetime.now(timezone.utc).isoformat()
                 state["sync_count"] = state.get("sync_count", 0) + 1
                 sync_result = {"synced": True}
@@ -492,15 +494,9 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
             # Dry-run confirms conflict — DO NOT sync, just report
             log("  dry-run confirms conflict. Will NOT sync. Generating report...")
 
-            # Temporarily sync to get real conflict details, then abort
-            bingo_result = run_bl(["sync"], cwd)
-            conflicts = analyze_conflict_details(cwd)
-            llm_conflict_analysis = llm_explain_conflicts(conflicts, model)
-            try:
-                run_git(["rebase", "--abort"], cwd)
-            except RuntimeError:
-                pass
-            sync_result = {"conflict": True}
+            # Don't run a real sync just to get conflict details — too risky
+            # Report dry-run results and recommend manual resolution
+            sync_result = {"conflict": True, "dry_run_conflicts": dry_result.get("conflicted_files", [])}
 
     # ── 4. REPORT ─────────────────────────────────────────────────────────
     log("REPORT: generating analysis...")

@@ -173,6 +173,11 @@ step_cli() {
     box_bottom
     echo ""
 
+    # Pre-authenticate sudo if needed (before backgrounding, so password prompt works)
+    if [[ ! -w "/usr/local/bin" ]]; then
+        sudo -v 2>/dev/null || { fail "sudo required but not available"; return; }
+    fi
+
     (
         if [[ ! -w "/usr/local/bin" ]]; then
             sudo install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
@@ -180,8 +185,12 @@ step_cli() {
             install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
         fi
     ) &
-    spin $! "Installing CLI..."
-    ok "bingo-light installed"
+    if spin $! "Installing CLI..."; then
+        ok "bingo-light installed"
+    else
+        fail "Failed to install bingo-light"
+        return
+    fi
     sleep 0.5
 }
 

@@ -81,6 +81,8 @@ complete -c bingo-light -n __bingo_light_needs_command -a config  -d 'Get/set/li
 complete -c bingo-light -n __bingo_light_needs_command -a history -d 'Show sync history with hash mappings'
 complete -c bingo-light -n __bingo_light_needs_command -a test    -d 'Run configured test suite'
 complete -c bingo-light -n __bingo_light_needs_command -a workspace -d 'Manage multiple forks'
+complete -c bingo-light -n __bingo_light_needs_command -a smart-sync -d 'Smart sync with circuit breaker and partial state'
+complete -c bingo-light -n __bingo_light_needs_command -a session -d 'Manage session memory'
 
 # Short aliases
 complete -c bingo-light -n __bingo_light_needs_command -a p  -d 'Alias for patch'
@@ -117,7 +119,7 @@ complete -c bingo-light -n '__bingo_light_using_command undo'      -s h -l help 
 complete -c bingo-light -n '__bingo_light_using_command version'   -s h -l help -d 'Show help'
 
 # ---- help: complete with command names ----
-complete -c bingo-light -n '__bingo_light_using_command help' -a 'init patch sync status doctor auto-sync log undo diff version conflict-analyze config history test workspace' -d 'Command'
+complete -c bingo-light -n '__bingo_light_using_command help' -a 'init patch sync status doctor auto-sync log undo diff version conflict-analyze config history test workspace smart-sync session' -d 'Command'
 
 # ---- patch subcommands (also alias "p") ----
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a new     -d 'Create a new patch'
@@ -162,3 +164,5 @@ complete -c bingo-light -n '__bingo_light_using_command config'           -s h -
 complete -c bingo-light -n '__bingo_light_using_command history'          -s h -l help -d 'Show help'
 complete -c bingo-light -n '__bingo_light_using_command test'             -s h -l help -d 'Show help'
 complete -c bingo-light -n '__bingo_light_using_command workspace ws'     -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_using_command smart-sync'      -s h -l help -d 'Show help'
+complete -c bingo-light -n '__bingo_light_using_command session'         -s h -l help -d 'Show help'

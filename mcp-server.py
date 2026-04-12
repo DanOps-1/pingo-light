@@ -588,9 +588,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     elif name == "bingo_conflict_resolve":
         try:
             file_path = str(Path(cwd, arguments["file"]).resolve())
-            Path(file_path).relative_to(Path(cwd).resolve())
+            rel = Path(file_path).relative_to(Path(cwd).resolve())
         except (ValueError, RuntimeError):
             return {"content": [{"type": "text", "text": f"Security: path escapes repository: {arguments['file']}"}], "isError": True}
+        # Block writes to .git/ internals
+        if rel.parts and rel.parts[0] == '.git':
+            return {"content": [{"type": "text", "text": "Error: cannot write to .git/ directory"}], "isError": True}
         if not os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) and not os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
             return {"content": [{"type": "text", "text": "Not in a rebase. Nothing to resolve."}], "isError": True}
         content = arguments["content"]
@@ -704,7 +707,7 @@ def read_message() -> dict | None:
         content_length = int(headers.get("content-length", 0))
     except (ValueError, TypeError):
         return _PARSE_ERROR
-    if content_length == 0:
+    if content_length <= 0 or content_length > 10 * 1024 * 1024:  # 10MB max
         return _PARSE_ERROR
 
     body = sys.stdin.read(content_length)

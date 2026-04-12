@@ -25,6 +25,8 @@ _bingo-light() {
         'history:Show sync history with hash mappings'
         'test:Run configured test suite'
         'workspace:Manage multiple forks'
+        'smart-sync:Smart sync with circuit breaker and partial state'
+        'session:Manage session memory'
     )
 
     local -a toplevel_aliases=(
@@ -132,7 +134,7 @@ _bingo-light() {
                 diff|d)
                     _arguments $help_flag
                     ;;
-                init|doctor|auto-sync|log|undo|version|conflict-analyze|config|history|test|workspace|ws)
+                init|doctor|auto-sync|log|undo|version|conflict-analyze|config|history|test|workspace|ws|smart-sync|session)
                     _arguments $help_flag
                     ;;
                 help)
