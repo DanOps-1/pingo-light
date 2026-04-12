@@ -23,13 +23,15 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
-# ─── Tool Definitions ─────────────────────────────────────────────────────────
+# ─── Direct import of bingo_core ─────────────────────────────────────────────
 
-BL = os.environ.get("BINGO_LIGHT_BIN", str(Path(__file__).parent / "bingo-light"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bingo_core import Repo, BingoError  # noqa: E402
+
+# ─── Tool Definitions ─────────────────────────────────────────────────────────
 
 TOOLS = [
     {
@@ -473,52 +475,17 @@ TOOLS = [
 # ─── Command Mapping ──────────────────────────────────────────────────────────
 
 
-def run_bl(args: list[str], cwd: str, input_text: str = "", env_extra: dict = None) -> dict:
-    """Run bingo-light CLI and return structured result."""
-    env = os.environ.copy()
-    env["NO_COLOR"] = "1"  # Disable ANSI colors for machine-readable output
-    if env_extra:
-        env.update(env_extra)
-
-    # Ensure JSON + non-interactive mode for all MCP calls
-    if "--json" not in args:
-        args = args + ["--json"]
-    if "--yes" not in args:
-        args = args + ["--yes"]
-
-    try:
-        result = subprocess.run(
-            [BL] + args,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            input=input_text or None,
-            env=env,
-        )
-        output = result.stdout.strip()
-        # Don't append stderr to stdout — it would corrupt JSON output.
-        # Only use stderr if stdout is empty (command failed without JSON output).
-        if not output and result.stderr:
-            output = result.stderr.strip()
-        return {
-            "content": [{"type": "text", "text": output}],
-            "isError": result.returncode != 0,
-        }
-    except FileNotFoundError:
-        return {
-            "content": [{"type": "text", "text": f"bingo-light not found at: {BL}\nInstall: cp bingo-light /usr/local/bin/"}],
-            "isError": True,
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "content": [{"type": "text", "text": "Command timed out (120s). The operation may need manual intervention."}],
-            "isError": True,
-        }
+def _result(data: dict) -> dict:
+    """Convert a Repo method return dict to MCP tool result format."""
+    is_error = not data.get("ok", False)
+    return {
+        "content": [{"type": "text", "text": json.dumps(data)}],
+        "isError": is_error,
+    }
 
 
 def handle_tool_call(name: str, arguments: dict) -> dict:
-    """Map MCP tool calls to bingo-light CLI commands."""
+    """Map MCP tool calls to bingo_core.Repo methods directly."""
     cwd = arguments.get("cwd", ".")
 
     # Type validation — MCP clients can send any JSON type
@@ -529,161 +496,151 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     if not os.path.isdir(cwd):
         return {"content": [{"type": "text", "text": f"Invalid cwd: directory does not exist: {cwd}"}], "isError": True}
 
-    if name == "bingo_status":
-        return run_bl(["status"], cwd)
+    try:
+        repo = Repo(cwd)
 
-    elif name == "bingo_init":
-        args = ["init", arguments["upstream_url"]]
-        if arguments.get("branch"):
-            args.append(arguments["branch"])
-        return run_bl(args, cwd)
+        if name == "bingo_status":
+            return _result(repo.status())
 
-    elif name == "bingo_patch_new":
-        desc = arguments.get("description", "no description")
-        env_extra = {"BINGO_DESCRIPTION": desc}
-        return run_bl(["patch", "new", arguments["name"]], cwd, env_extra=env_extra)
+        elif name == "bingo_init":
+            return _result(repo.init(
+                arguments["upstream_url"],
+                arguments.get("branch", ""),
+            ))
 
-    elif name == "bingo_patch_list":
-        args = ["patch", "list"]
-        if arguments.get("verbose"):
-            args.append("-v")
-        return run_bl(args, cwd)
+        elif name == "bingo_sync":
+            return _result(repo.sync(
+                dry_run=bool(arguments.get("dry_run")),
+                force=True,  # MCP calls are non-interactive
+            ))
 
-    elif name == "bingo_patch_show":
-        return run_bl(["patch", "show", arguments["target"]], cwd)
+        elif name == "bingo_smart_sync":
+            return _result(repo.smart_sync())
 
-    elif name == "bingo_patch_drop":
-        return run_bl(["patch", "drop", arguments["target"]], cwd)
+        elif name == "bingo_undo":
+            return _result(repo.undo())
 
-    elif name == "bingo_patch_export":
-        args = ["patch", "export"]
-        if arguments.get("output_dir"):
-            args.append(arguments["output_dir"])
-        return run_bl(args, cwd)
+        elif name == "bingo_doctor":
+            return _result(repo.doctor())
 
-    elif name == "bingo_patch_import":
-        return run_bl(["patch", "import", arguments["path"]], cwd)
+        elif name == "bingo_diff":
+            return _result(repo.diff())
 
-    elif name == "bingo_sync":
-        args = ["sync", "--force"]  # Skip interactive prompt
-        if arguments.get("dry_run"):
-            args = ["sync", "--dry-run"]
-        return run_bl(args, cwd)
+        elif name == "bingo_history":
+            return _result(repo.history())
 
-    elif name == "bingo_undo":
-        return run_bl(["undo"], cwd)
+        elif name == "bingo_conflict_analyze":
+            return _result(repo.conflict_analyze())
 
-    elif name == "bingo_doctor":
-        return run_bl(["doctor"], cwd)
+        elif name == "bingo_conflict_resolve":
+            return _result(repo.conflict_resolve(
+                arguments.get("file", ""),
+                arguments.get("content", ""),
+            ))
 
-    elif name == "bingo_diff":
-        return run_bl(["diff"], cwd)
+        elif name == "bingo_log":
+            return _result(repo.history())
 
-    elif name == "bingo_auto_sync":
-        schedule = arguments.get("schedule", "daily")
-        return run_bl(["auto-sync"], cwd, env_extra={"BINGO_SCHEDULE": schedule})
+        elif name == "bingo_config":
+            action = arguments.get("action", "list")
+            if action == "get":
+                return _result(repo.config_get(arguments.get("key", "")))
+            elif action == "set":
+                return _result(repo.config_set(
+                    arguments.get("key", ""),
+                    arguments.get("value", ""),
+                ))
+            else:
+                return _result(repo.config_list())
 
-    elif name == "bingo_conflict_analyze":
-        return run_bl(["conflict-analyze"], cwd)
+        elif name == "bingo_test":
+            return _result(repo.test())
 
-    elif name == "bingo_conflict_resolve":
-        try:
-            file_path = str(Path(cwd, arguments["file"]).resolve())
-            rel = Path(file_path).relative_to(Path(cwd).resolve())
-        except (ValueError, RuntimeError):
-            return {"content": [{"type": "text", "text": f"Security: path escapes repository: {arguments['file']}"}], "isError": True}
-        # Block writes to .git/ internals
-        if rel.parts and rel.parts[0] == '.git':
-            return {"content": [{"type": "text", "text": "Error: cannot write to .git/ directory"}], "isError": True}
-        if not os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) and not os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
-            return {"content": [{"type": "text", "text": "Not in a rebase. Nothing to resolve."}], "isError": True}
-        content = arguments["content"]
-        try:
-            # O_NOFOLLOW prevents symlink-based TOCTOU attacks
-            fd = os.open(file_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
-            with os.fdopen(fd, "w") as f:
-                f.write(content)
-            result = subprocess.run(
-                ["git", "add", file_path],  # Use validated path, not raw input
-                cwd=cwd, capture_output=True, text=True, timeout=10,
-            )
-            if result.returncode != 0:
-                return {"content": [{"type": "text", "text": f"git add failed: {result.stderr}"}], "isError": True}
-            # Try to continue rebase
-            result = subprocess.run(
-                ["git", "rebase", "--continue"],
-                cwd=cwd, capture_output=True, text=True, timeout=60,
-                env={**os.environ, "GIT_EDITOR": "true"},
-            )
-            output = result.stdout
-            if result.stderr:
-                output += "\n" + result.stderr
-            return {
-                "content": [{"type": "text", "text": output.strip()}],
-                "isError": result.returncode != 0,
-            }
-        except Exception as e:
-            return {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True}
+        elif name == "bingo_auto_sync":
+            return _result(repo.auto_sync(
+                schedule=arguments.get("schedule", "daily"),
+            ))
 
-    elif name == "bingo_config":
-        action = arguments.get("action", "list")
-        if action == "get":
-            return run_bl(["config", "get", arguments.get("key", "")], cwd)
-        elif action == "set":
-            return run_bl(["config", "set", arguments.get("key", ""), arguments.get("value", "")], cwd)
+        elif name == "bingo_session":
+            return _result(repo.session(
+                update=bool(arguments.get("update")),
+            ))
+
+        elif name == "bingo_patch_new":
+            return _result(repo.patch_new(
+                arguments["name"],
+                arguments.get("description", "no description"),
+            ))
+
+        elif name == "bingo_patch_list":
+            return _result(repo.patch_list(
+                verbose=bool(arguments.get("verbose")),
+            ))
+
+        elif name == "bingo_patch_show":
+            return _result(repo.patch_show(arguments["target"]))
+
+        elif name == "bingo_patch_drop":
+            return _result(repo.patch_drop(arguments["target"]))
+
+        elif name == "bingo_patch_edit":
+            return _result(repo.patch_edit(arguments["target"]))
+
+        elif name == "bingo_patch_export":
+            return _result(repo.patch_export(
+                arguments.get("output_dir", ".bl-patches"),
+            ))
+
+        elif name == "bingo_patch_import":
+            return _result(repo.patch_import(arguments["path"]))
+
+        elif name == "bingo_patch_meta":
+            return _result(repo.patch_meta(
+                arguments["name"],
+                arguments.get("set_field", ""),
+                arguments.get("value", ""),
+            ))
+
+        elif name == "bingo_patch_squash":
+            return _result(repo.patch_squash(
+                arguments["index1"],
+                arguments["index2"],
+            ))
+
+        elif name == "bingo_patch_reorder":
+            return _result(repo.patch_reorder(
+                arguments.get("order", ""),
+            ))
+
+        elif name == "bingo_workspace_init":
+            return _result(repo.workspace_init())
+
+        elif name == "bingo_workspace_add":
+            return _result(repo.workspace_add(
+                arguments["path"],
+                arguments.get("alias", ""),
+            ))
+
+        elif name == "bingo_workspace_list":
+            return _result(repo.workspace_list())
+
+        elif name == "bingo_workspace_sync":
+            return _result(repo.workspace_sync())
+
+        elif name == "bingo_workspace_status":
+            return _result(repo.workspace_status())
+
         else:
-            return run_bl(["config", "list"], cwd)
+            return {
+                "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
+                "isError": True,
+            }
 
-    elif name == "bingo_history":
-        return run_bl(["history"], cwd)
+    except BingoError as e:
+        return _result({"ok": False, "error": str(e)})
 
-    elif name == "bingo_test":
-        return run_bl(["test"], cwd)
-
-    elif name == "bingo_patch_meta":
-        args = ["patch", "meta", arguments["name"]]
-        if arguments.get("set_field") and "value" in arguments:
-            args += [f"--set-{arguments['set_field'].replace('_', '-')}", arguments["value"]]
-        return run_bl(args, cwd)
-
-    elif name == "bingo_patch_squash":
-        return run_bl(["patch", "squash", str(arguments["index1"]), str(arguments["index2"])], cwd)
-
-    elif name == "bingo_patch_reorder":
-        return run_bl(["patch", "reorder", "--order", arguments["order"]], cwd)
-
-    elif name == "bingo_workspace_status":
-        return run_bl(["workspace", "status"], cwd)
-
-    elif name == "bingo_patch_edit":
-        return run_bl(["patch", "edit", arguments["target"]], cwd)
-
-    elif name == "bingo_workspace_init":
-        return run_bl(["workspace", "init"], cwd)
-    elif name == "bingo_workspace_add":
-        args = ["workspace", "add", arguments["path"]]
-        if arguments.get("alias"):
-            args.append(arguments["alias"])
-        return run_bl(args, cwd)
-    elif name == "bingo_workspace_sync":
-        return run_bl(["workspace", "sync"], cwd)
-    elif name == "bingo_workspace_list":
-        return run_bl(["workspace", "list"], cwd)
-
-    elif name == "bingo_smart_sync":
-        return run_bl(["smart-sync"], cwd)
-
-    elif name == "bingo_session":
-        args = ["session"]
-        if arguments.get("update"):
-            args.append("update")
-        return run_bl(args, cwd)
-
-    else:
-        return {
-            "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
-            "isError": True,
-        }
+    except Exception as e:
+        return _result({"ok": False, "error": f"Internal error: {e}"})
 
 # ─── MCP JSON-RPC Protocol ───────────────────────────────────────────────────
 
