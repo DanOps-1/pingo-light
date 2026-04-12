@@ -66,7 +66,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 
 **VERSION** (currently 2.0.0) — change ALL of these together:
 - `bingo_core.py:25` — source of truth
-- `pyproject.toml` — `version`
+
 - `mcp-server.py` — `"version"` in initialize response
 - `contrib/homebrew/bingo-light.rb` — tar.gz URL
 - `CHANGELOG.md` — must have a matching `## [x.x.x]` entry
@@ -79,7 +79,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 - `install.sh` — display text
 - `tests/test.sh` section 15 — count assertion
 
-**bingo-light ↔ bingo_light_cli.py** — must be identical. After editing `bingo-light`, always `cp bingo-light bingo_light_cli.py`.
+
 
 **README.md ↔ README.zh-CN.md** — parallel documents. Structural changes must be mirrored: badges, features, comparison table, install methods, MCP tool table, project ecosystem.
 
@@ -87,8 +87,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 
 1. `bingo_core.py` — add method to `Repo` class, return dict with `ok` key
 2. `bingo-light` — add argparse + dispatch + formatter
-3. `bingo_light_cli.py` — copy from `bingo-light`
-4. `completions/*.bash`, `.zsh`, `.fish` — add to completion list
+3. `completions/*.bash`, `.zsh`, `.fish` — add to completion list
 5. `llms.txt` — add to command reference
 6. `README.md` + `README.zh-CN.md` — add to Command Reference
 7. Tests — add to `test.sh` or `test_core.py`

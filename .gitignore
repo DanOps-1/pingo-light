@@ -1,8 +1,8 @@
 __pycache__/
 *.pyc
 *.egg-info/
-dist/
 build/
+dist/
 .bingo-agent-state.json
 .bingo-report.md
 .bl-patches/

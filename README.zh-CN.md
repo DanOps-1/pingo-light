@@ -11,7 +11,6 @@
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
   <a href="#mcp-服务器"><img src="https://img.shields.io/badge/MCP_Server-29_tools-blueviolet.svg" alt="MCP: 27 tools"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-3776ab.svg" alt="Python 3.8+"></a>
-  <a href="https://pypi.org/project/bingo-light/"><img src="https://img.shields.io/pypi/v/bingo-light?color=blue&label=PyPI" alt="PyPI"></a>
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg" alt="Zero deps">
   <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
   <br><br>
@@ -124,13 +123,7 @@ $ bingo-light conflict-analyze --json
 
 ## 安装
 
-### pip（推荐）
-
-```bash
-pip install bingo-light
-```
-
-### 交互式安装器
+### 交互式安装器（推荐）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
@@ -468,7 +461,7 @@ StGit（649 stars）管理补丁栈但没有 AI 集成、没有 MCP 服务器、
 | JSON 输出 | **所有命令** | 无 | 无 | 无 | 无 |
 | 非交互模式 | **原生支持** | 无 | 部分 | 部分 | 部分 |
 | 撤销同步 | **一条命令** | 无 | git reflog | 手动 | 手动 |
-| 安装方式 | `pip install` | 内置 | 内置 | 包管理器 | 包管理器 |
+| 安装方式 | 一条命令 | 内置 | 内置 | 包管理器 | 包管理器 |
 
 ## 项目生态
 

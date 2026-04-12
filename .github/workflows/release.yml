@@ -47,24 +47,3 @@ jobs:
             bingo_core.py
             mcp-server.py
 
-  pypi:
-    name: Publish to PyPI
-    runs-on: ubuntu-latest
-    needs: release
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Build package
-        run: |
-          pip install build
-          python -m build
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1

@@ -9,7 +9,6 @@
   <a href="https://github.com/DanOps-1/bingo-light/actions"><img src="https://github.com/DanOps-1/bingo-light/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
-  <a href="https://pypi.org/project/bingo-light/"><img src="https://img.shields.io/pypi/v/bingo-light?color=blue&label=PyPI" alt="PyPI"></a>
   <br>
   <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_Server-29_tools-blueviolet.svg" alt="MCP: 29 tools"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-3776ab.svg" alt="Python 3.8+"></a>
@@ -105,13 +104,7 @@ That's it. Three commands and your fork stays in sync forever.
 
 ## Installation
 
-### pip (recommended)
-
-```bash
-pip install bingo-light
-```
-
-### Interactive installer
+### Interactive installer (recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
@@ -391,7 +384,7 @@ StGit (649 stars) manages patch stacks but has no AI integration, no MCP server,
 | JSON output | **All commands** | No | No | No | No |
 | Non-interactive mode | **Native** | No | Partial | Partial | Partial |
 | Undo sync | **One command** | No | git reflog | Manual | Manual |
-| Install | `pip install` | Built-in | Built-in | Package mgr | Package mgr |
+| Install | One command | Built-in | Built-in | Package mgr | Package mgr |
 
 ---
 
