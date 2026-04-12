@@ -185,14 +185,22 @@ def _format_diff(result: dict) -> str:
 
 def _format_history(result: dict) -> str:
     """Format history/log result."""
-    entries = result.get("history", result.get("entries", []))
-    if not entries:
+    syncs = result.get("syncs", result.get("history", result.get("entries", [])))
+    if not syncs:
         return "No sync history."
     lines = []
-    for e in entries:
+    for e in syncs:
         ts = e.get("timestamp", "")
-        msg = e.get("message", e.get("summary", ""))
-        lines.append(f"  {_c(DIM, ts)}  {msg}")
+        n = e.get("upstream_commits_integrated", 0)
+        patches = e.get("patches", [])
+        before = e.get("upstream_before", "")[:7]
+        after = e.get("upstream_after", "")[:7]
+        summary = f"{n} commit(s) integrated"
+        if before and after:
+            summary += f"  {before} \u2192 {after}"
+        if patches:
+            summary += f"  ({len(patches)} patch(es) rebased)"
+        lines.append(f"  {_c(DIM, ts)}  {summary}")
     return "\n".join(lines)
 
 
@@ -332,6 +340,18 @@ def _format_patch_import(result: dict) -> str:
     """Format patch import result."""
     count = result.get("patch_count", 0)
     return f"{_c(GREEN, 'OK')} Import complete. {count} patch(es) in stack."
+
+
+def _format_undo(result: dict) -> str:
+    """Format undo result."""
+    if result.get("ok") is False:
+        err = result.get("error", "Undo failed.")
+        return f"{_c(RED, 'x')} {err}"
+    msg = result.get("message", "")
+    if msg:
+        return f"{_c(GREEN, 'OK')} {msg}"
+    restored = result.get("restored_to", "")[:7]
+    return f"{_c(GREEN, 'OK')} Restored to {restored}"
 
 
 def _format_generic(result: dict) -> str:
@@ -740,6 +760,7 @@ _FORMATTERS: Dict[str, Any] = {
     "session": _format_session,
     "test": _format_test,
     "auto-sync": _format_auto_sync,
+    "undo": _format_undo,
 }
 
 
