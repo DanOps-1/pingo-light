@@ -1156,21 +1156,21 @@ class Repo:
         # Upstream remote
         if self.git.run_ok("remote", "get-url", "upstream"):
             url = self.git.run("remote", "get-url", "upstream", check=False)
-            _check("upstream_remote", "pass", url)
+            _check("upstream remote", "pass", url)
         else:
-            _check("upstream_remote", "fail", "not found")
+            _check("upstream remote", "fail", "not found")
 
         # Tracking branch
         if self.git.rev_parse(c["tracking_branch"]):
-            _check("tracking_branch", "pass", c["tracking_branch"])
+            _check("tracking branch", "pass", c["tracking_branch"])
         else:
-            _check("tracking_branch", "fail", "missing")
+            _check("tracking branch", "fail", "missing")
 
         # Patches branch
         if self.git.rev_parse(c["patches_branch"]):
-            _check("patches_branch", "pass", c["patches_branch"])
+            _check("patches branch", "pass", c["patches_branch"])
         else:
-            _check("patches_branch", "fail", "missing")
+            _check("patches branch", "fail", "missing")
 
         # Patch stack integrity
         if issues == 0:
@@ -1882,16 +1882,37 @@ class Repo:
         if not patches:
             return {"ok": True, "patches": [], "count": 0}
 
-        result_patches = [
-            {
+        result_patches = []
+        for p in patches:
+            entry: dict = {
                 "name": p.name,
                 "hash": p.hash,
                 "subject": p.subject,
                 "files": p.files,
                 "stat": p.stat,
             }
-            for p in patches
-        ]
+            if verbose:
+                # Include per-file details
+                try:
+                    file_output = self.git.run(
+                        "diff-tree", "--no-commit-id", "--name-status", "-r",
+                        p.hash, check=False,
+                    )
+                    file_details: List[str] = []
+                    if file_output:
+                        for line in file_output.splitlines():
+                            parts = line.split("\t", 1)
+                            if len(parts) == 2:
+                                status_code = parts[0].strip()
+                                fname = parts[1].strip()
+                                prefix = {"M": "~", "A": "+", "D": "-"}.get(
+                                    status_code, "?"
+                                )
+                                file_details.append(f"{prefix} {fname}")
+                    entry["file_details"] = file_details
+                except Exception:
+                    entry["file_details"] = []
+            result_patches.append(entry)
 
         return {
             "ok": True,

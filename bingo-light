@@ -105,17 +105,23 @@ def _format_patch_list(result: dict) -> str:
         name = p.get("name", "?")
         h = p.get("hash", "")[:7]
         lines.append(f"   {i} {_c(CYAN, name)} ({_c(DIM, h)})")
-        stat = p.get("stat", "")
-        if stat:
-            lines.append(f"     {stat}")
+        # Show file details if available (verbose mode)
+        file_details = p.get("file_details", [])
+        if file_details:
+            for fd in file_details:
+                lines.append(f"     {fd}")
         else:
-            ins = p.get("insertions", 0)
-            dele = p.get("deletions", 0)
-            files = p.get("files", 0)
-            fc = "file" if files == 1 else "files"
-            lines.append(
-                f"     {files} {fc} changed, {ins} insertions(+), {dele} deletions(-)"
-            )
+            stat = p.get("stat", "")
+            if stat:
+                lines.append(f"     {stat}")
+            else:
+                ins = p.get("insertions", 0)
+                dele = p.get("deletions", 0)
+                files = p.get("files", 0)
+                fc = "file" if files == 1 else "files"
+                lines.append(
+                    f"     {files} {fc} changed, {ins} insertions(+), {dele} deletions(-)"
+                )
     lines.append("")
     lines.append(f"  Total: {len(patches)} patch(es)")
     lines.append("")
@@ -131,7 +137,9 @@ def _format_sync(result: dict) -> str:
             f"{_c(YELLOW, '!')} Dry run: {behind} new upstream commit(s), "
             f"{patches} patch(es) to rebase."
         )
-    patches = result.get("patches", 0)
+    if result.get("up_to_date"):
+        return f"{_c(GREEN, 'OK')} Already up to date."
+    patches = result.get("patches_rebased", result.get("patches", 0))
     return f"{_c(GREEN, 'OK')} Sync complete! {patches} patch(es) rebased cleanly."
 
 
@@ -141,12 +149,13 @@ def _format_doctor(result: dict) -> str:
     checks = result.get("checks", [])
     for check in checks:
         name = check.get("name", "?")
-        ok = check.get("ok", False)
+        status = check.get("status", "")
+        ok = status == "pass" or check.get("ok", False)
         symbol = _c(GREEN, "OK") if ok else _c(RED, "FAIL")
+        detail = check.get("detail", check.get("message", ""))
         lines.append(f"  {symbol}  {name}")
-        msg = check.get("message", "")
-        if msg and not ok:
-            lines.append(f"       {_c(DIM, msg)}")
+        if detail and not ok:
+            lines.append(f"       {_c(DIM, detail)}")
     return "\n".join(lines)
 
 
@@ -214,7 +223,7 @@ def _format_config(result: dict) -> str:
 
 def _format_test(result: dict) -> str:
     """Format test result."""
-    passed = result.get("passed", False)
+    passed = result.get("test") == "pass" or result.get("passed", False)
     output = result.get("output", "")
     status = _c(GREEN, "PASS") if passed else _c(RED, "FAIL")
     lines = [f"Test: {status}"]
@@ -257,8 +266,56 @@ def _format_workspace(result: dict) -> str:
 
 def _format_patch_show(result: dict) -> str:
     """Format patch show."""
-    diff_text = result.get("diff", "")
+    patch = result.get("patch", {})
+    diff_text = patch.get("diff", "") if isinstance(patch, dict) else ""
+    if not diff_text:
+        # fallback: top-level diff key
+        diff_text = result.get("diff", "")
     return diff_text if diff_text else "Empty patch."
+
+
+def _format_init(result: dict) -> str:
+    """Format init result."""
+    upstream = result.get("upstream", "")
+    branch = result.get("branch", "")
+    return (
+        f"{_c(GREEN, 'OK')} Fork tracking initialized.\n"
+        f"  Upstream: {upstream}\n"
+        f"  Branch: {branch}\n"
+        f"  Tracking: {result.get('tracking', '')}\n"
+        f"  Patches: {result.get('patches', '')}"
+    )
+
+
+def _format_patch_new(result: dict) -> str:
+    """Format patch new result."""
+    name = result.get("patch", "")
+    h = result.get("hash", "")
+    desc = result.get("description", "")
+    return (
+        f"{_c(GREEN, 'OK')} Patch created: {_c(CYAN, name)} ({_c(DIM, h)})\n"
+        f"  {desc}"
+    )
+
+
+def _format_patch_drop(result: dict) -> str:
+    """Format patch drop result."""
+    name = result.get("dropped", "")
+    h = result.get("hash", "")
+    return f"{_c(GREEN, 'OK')} Dropped patch: {_c(CYAN, name)} ({_c(DIM, h)})"
+
+
+def _format_patch_export(result: dict) -> str:
+    """Format patch export result."""
+    count = result.get("count", 0)
+    directory = result.get("directory", "")
+    return f"{_c(GREEN, 'OK')} Exported {count} patch(es) to {directory}"
+
+
+def _format_patch_import(result: dict) -> str:
+    """Format patch import result."""
+    count = result.get("patch_count", 0)
+    return f"{_c(GREEN, 'OK')} Import complete. {count} patch(es) in stack."
 
 
 def _format_generic(result: dict) -> str:
@@ -355,7 +412,14 @@ class _BingoParser(argparse.ArgumentParser):
 
     def error(self, message: str) -> None:
         # Detect if --json was in sys.argv
-        json_mode = "--json" in sys.argv or not sys.stdout.isatty()
+        json_mode = "--json" in sys.argv
+        # Rewrite argparse "invalid choice" to include "unknown" keyword for test compat
+        if "invalid choice:" in message:
+            # Extract the bad command name from argparse message
+            import re as _re
+            m = _re.search(r"invalid choice: '([^']+)'", message)
+            if m:
+                message = f"Unknown command: {m.group(1)}"
         _error_exit(
             f"{message}. Run 'bingo-light --help' for usage.",
             json_mode,
@@ -369,14 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="AI-native fork maintenance tool.",
         add_help=False,
     )
-    parser.add_argument("--json", dest="json_mode", action="store_true",
-                        help="Output JSON instead of human-readable text")
-    parser.add_argument("--yes", "-y", dest="yes_mode", action="store_true",
-                        help="Skip confirmation prompts")
-    parser.add_argument("--version", "-v", action="store_true",
-                        help="Show version")
-    parser.add_argument("--help", "-h", action="store_true",
-                        help="Show help")
+    # Note: --json, --yes, --version, --help are pre-extracted in main()
+    # before argparse runs. They are NOT defined here.
 
     sub = parser.add_subparsers(dest="command")
 
@@ -642,6 +700,7 @@ def _dispatch_workspace(args: argparse.Namespace, repo: Repo) -> dict:
 # ─── Formatter dispatch ─────────────────────────────────────────────────────
 
 _FORMATTERS: Dict[str, Any] = {
+    "init": _format_init,
     "status": _format_status,
     "st": _format_status,
     "sync": _format_sync,
@@ -669,6 +728,14 @@ def _get_formatter(args: argparse.Namespace):
             return _format_patch_list
         if pcmd == "show":
             return _format_patch_show
+        if pcmd == "new":
+            return _format_patch_new
+        if pcmd == "drop":
+            return _format_patch_drop
+        if pcmd == "export":
+            return _format_patch_export
+        if pcmd == "import":
+            return _format_patch_import
         return _format_generic
 
     # workspace subcommands
@@ -687,38 +754,54 @@ def _get_formatter(args: argparse.Namespace):
 
 def main() -> None:
     """Entry point."""
-    parser = build_parser()
-
-    # Pre-parse: extract --json and --yes before argparse to handle edge cases
+    # ── Pre-extract global flags before argparse (subparsers don't inherit them) ──
     raw_args = sys.argv[1:]
+    json_mode = False
+    yes_mode = False
+    show_version = False
+    show_help_flag = False
+    cleaned = []
+    for arg in raw_args:
+        if arg == "--json":
+            json_mode = True
+        elif arg in ("--yes", "-y"):
+            yes_mode = True
+        elif arg in ("--version",):
+            show_version = True
+        elif arg in ("--help", "-h"):
+            show_help_flag = True
+        else:
+            cleaned.append(arg)
 
-    # Parse
-    args, unknown = parser.parse_known_args(raw_args)
-
-    # Determine JSON mode
-    json_mode = args.json_mode
-    # Auto-enable JSON when stdout is not a TTY (piping to another program)
-    if not sys.stdout.isatty():
-        json_mode = True
-
-    # Auto-enable yes mode when stdin is not a TTY (AI agent / pipe)
+    # Auto-enable yes when stdin is not a TTY (AI agent / pipe)
     if not sys.stdin.isatty():
-        args.yes_mode = True
+        yes_mode = True
 
-    # --version
-    if args.version:
+    # --version (before argparse)
+    if show_version:
         if json_mode:
             _json_print({"ok": True, "version": VERSION})
         else:
             print(f"bingo-light {VERSION}")
         return
 
-    # --help or no command or 'help' command
-    if args.help or args.command is None or args.command == "help":
+    # --help or no args or 'help' command
+    if show_help_flag or not cleaned or (cleaned and cleaned[0] == "help"):
         if json_mode:
             _json_print({"ok": True, "help": True, "version": VERSION})
         else:
             print(show_help())
+        return
+
+    # ── Parse remaining args with argparse ──
+    parser = build_parser()
+    args, unknown = parser.parse_known_args(cleaned)
+    args.json_mode = json_mode
+    args.yes_mode = yes_mode
+
+    # No command after parsing
+    if args.command is None:
+        print(show_help())
         return
 
     # Unknown args check
