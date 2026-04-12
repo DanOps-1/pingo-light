@@ -353,6 +353,29 @@ class TestState(unittest.TestCase):
         self.assertIsNone(head)
         self.assertIsNone(tracking)
 
+    def test_patch_meta_tags_comma(self):
+        """Comma-separated tags stored individually."""
+        self.state._ensure_dir()
+        self.state.patch_meta_set("p1", "tags", "a,b,c")
+        meta = self.state.patch_meta_get("p1")
+        self.assertEqual(meta["tags"], ["a", "b", "c"])
+
+    def test_patch_meta_tags_plural_key(self):
+        """'tags' key works same as 'tag'."""
+        self.state._ensure_dir()
+        self.state.patch_meta_set("p1", "tags", "x")
+        self.state.patch_meta_set("p1", "tag", "y")
+        meta = self.state.patch_meta_get("p1")
+        self.assertEqual(sorted(meta["tags"]), ["x", "y"])
+
+    def test_patch_meta_tags_dedup(self):
+        """Duplicate tags not added."""
+        self.state._ensure_dir()
+        self.state.patch_meta_set("p1", "tags", "a,b")
+        self.state.patch_meta_set("p1", "tags", "b,c")
+        meta = self.state.patch_meta_get("p1")
+        self.assertEqual(meta["tags"], ["a", "b", "c"])
+
 
 class TestRepo(unittest.TestCase):
     """Integration tests for the Repo class with real git repos."""
@@ -720,6 +743,85 @@ class TestRepo(unittest.TestCase):
         result = repo.patch_meta("meta-test")
         self.assertTrue(result["ok"])
         self.assertEqual(result["meta"]["reason"], "bug fix")
+
+    def test_reinit_detection(self):
+        """Re-init returns reinit flag."""
+        repo = Repo(self.fork_path)
+        r1 = repo.init(self.upstream_path, "main")
+        self.assertTrue(r1["ok"])
+        self.assertNotIn("reinit", r1)
+        r2 = repo.init(self.upstream_path, "main")
+        self.assertTrue(r2["ok"])
+        self.assertTrue(r2.get("reinit"))
+
+    def test_conflict_resolve_no_rebase(self):
+        """conflict_resolve raises when no rebase in progress."""
+        repo = Repo(self.fork_path)
+        repo.init(self.upstream_path, "main")
+        with self.assertRaises(BingoError):
+            repo.conflict_resolve("app.py", "content")
+
+    def test_workspace_remove(self):
+        """workspace remove deletes entry."""
+        tmpconfig = tempfile.mkdtemp(prefix="bl-ws-cfg-")
+        old_xdg = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = tmpconfig
+        try:
+            repo = Repo(self.fork_path)
+            repo.workspace_init()
+            repo.workspace_add(self.fork_path, "test-fork")
+            result = repo.workspace_remove("test-fork")
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["removed"], "test-fork")
+            ws = repo.workspace_list()
+            self.assertEqual(len(ws["repos"]), 0)
+        finally:
+            if old_xdg is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = old_xdg
+            shutil.rmtree(tmpconfig, ignore_errors=True)
+
+    def test_workspace_remove_not_found(self):
+        """workspace remove raises for nonexistent alias."""
+        tmpconfig = tempfile.mkdtemp(prefix="bl-ws-cfg-")
+        old_xdg = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = tmpconfig
+        try:
+            repo = Repo(self.fork_path)
+            repo.workspace_init()
+            with self.assertRaises(BingoError):
+                repo.workspace_remove("nope")
+        finally:
+            if old_xdg is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = old_xdg
+            shutil.rmtree(tmpconfig, ignore_errors=True)
+
+    def test_workspace_status(self):
+        """workspace status returns per-repo details."""
+        tmpconfig = tempfile.mkdtemp(prefix="bl-ws-cfg-")
+        old_xdg = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = tmpconfig
+        try:
+            repo = Repo(self.fork_path)
+            repo.init(self.upstream_path, "main")
+            repo.workspace_init()
+            repo.workspace_add(self.fork_path, "test-fork")
+            result = repo.workspace_status()
+            self.assertTrue(result["ok"])
+            self.assertEqual(len(result["repos"]), 1)
+            r = result["repos"][0]
+            self.assertEqual(r["alias"], "test-fork")
+            self.assertIn("behind", r)
+            self.assertIn("patches", r)
+        finally:
+            if old_xdg is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = old_xdg
+            shutil.rmtree(tmpconfig, ignore_errors=True)
 
     def test_version_constant(self):
         """VERSION should be 2.0.0."""
