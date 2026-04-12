@@ -1,0 +1,13 @@
+# Default owner for everything
+* @DanOps-1
+
+# Core
+/bingo-light        @DanOps-1
+/bingo_core.py      @DanOps-1
+/mcp-server.py      @DanOps-1
+
+# Tests
+/tests/             @DanOps-1
+
+# CI/CD
+/.github/           @DanOps-1

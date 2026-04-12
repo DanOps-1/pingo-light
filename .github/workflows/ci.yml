@@ -56,16 +56,38 @@ jobs:
         run: python3 ./tests/test-mcp.py
 
   lint:
-    name: ShellCheck
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lint bingo-light
-        run: shellcheck --severity=error bingo-light
+      - name: Python syntax check
+        run: |
+          python3 -c "import py_compile; py_compile.compile('bingo-light', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)"
 
-      - name: Lint test scripts
-        run: shellcheck --severity=error tests/test.sh tests/test-json.sh tests/test-edge.sh
+      - name: Flake8
+        run: |
+          pip install flake8
+          flake8 bingo-light bingo_core.py mcp-server.py --max-line-length=120 --ignore=E501,W503
 
-      - name: Lint contrib hooks
-        run: shellcheck --severity=error contrib/hooks/*
+      - name: ShellCheck (bash scripts)
+        run: |
+          shellcheck --severity=error bingo-light.bash
+          shellcheck --severity=error tests/test.sh tests/test-json.sh tests/test-edge.sh
+          shellcheck --severity=error contrib/hooks/*
+
+  unit:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@test"
+
+      - name: Run unit tests
+        run: python3 tests/test_core.py

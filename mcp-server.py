@@ -711,6 +711,8 @@ def read_message() -> dict | None:
         return _PARSE_ERROR
 
     body = sys.stdin.read(content_length)
+    if len(body) < content_length:
+        return _PARSE_ERROR  # truncated read — discard to protect stream
     try:
         return json.loads(body)
     except json.JSONDecodeError:
@@ -753,7 +755,7 @@ def main():
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "bingo-light",
-                    "version": "1.2.0",
+                    "version": "2.0.0",
                 },
             }))
 
@@ -764,6 +766,8 @@ def main():
             send_message(make_response(id, {"tools": TOOLS}))
 
         elif method == "tools/call":
+            if id is None:
+                continue  # JSON-RPC notification — must not respond
             tool_name = params.get("name", "")
             arguments = params.get("arguments", {})
             try:
@@ -773,11 +777,12 @@ def main():
             send_message(make_response(id, result))
 
         elif method == "ping":
-            send_message(make_response(id, {}))
+            if id is not None:
+                send_message(make_response(id, {}))
 
         elif id is not None:
             send_message(make_error(id, -32601, f"Method not found: {method}"))
-        # else: unknown notification, ignore
+        # else: unknown notification, ignore per JSON-RPC 2.0 spec
 
 
 if __name__ == "__main__":

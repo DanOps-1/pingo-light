@@ -4,7 +4,7 @@ COMPLETIONS_DIR_BASH ?= $(PREFIX)/share/bash-completion/completions
 COMPLETIONS_DIR_ZSH ?= $(PREFIX)/share/zsh/site-functions
 COMPLETIONS_DIR_FISH ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: install uninstall test lint completions help
+.PHONY: install uninstall test lint completions help test-all
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -32,5 +32,15 @@ completions: ## Install shell completions (bash, zsh, fish)
 test: ## Run test suite
 	@./tests/test.sh
 
-lint: ## Run shellcheck (if installed)
-	@command -v shellcheck >/dev/null 2>&1 && shellcheck bingo-light || echo "shellcheck not found, skipping"
+test-all: ## Run all test suites (core + fuzz + edge + MCP + unit)
+	@./tests/run-all.sh
+
+lint: ## Lint Python (syntax + flake8) and Shell (shellcheck)
+	@echo "Checking Python syntax..."
+	@python3 -c "import py_compile; py_compile.compile('bingo-light', doraise=True)"
+	@python3 -c "import py_compile; py_compile.compile('bingo_core.py', doraise=True)"
+	@python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)"
+	@echo "Running flake8..."
+	@command -v flake8 >/dev/null 2>&1 && flake8 bingo-light bingo_core.py mcp-server.py --max-line-length=120 --ignore=E501,W503 || echo "  flake8 not installed, skipping (pip install flake8)"
+	@echo "Running shellcheck..."
+	@command -v shellcheck >/dev/null 2>&1 && shellcheck --severity=error bingo-light.bash tests/test.sh tests/test-json.sh tests/test-edge.sh || echo "  shellcheck not installed, skipping"

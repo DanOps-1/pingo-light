@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass, field, asdict
@@ -76,9 +77,9 @@ class NotInitializedError(BingoError):
 class DirtyTreeError(BingoError):
     """Working tree has uncommitted changes."""
 
-    def __init__(self):
+    def __init__(self, msg: str = ""):
         super().__init__(
-            "Working tree is dirty. Commit or stash your changes first."
+            msg or "Working tree is dirty. Commit or stash your changes first."
         )
 
 
@@ -279,8 +280,8 @@ class Git:
                     name=name, hash=hash_val, subject=subject, files=0, stat=""
                 )
             elif current is not None:
-                # numstat line: add\tdel\tfile
-                if re.match(r"^\d+\t\d+\t", line):
+                # numstat line: add\tdel\tfile (binary shows -\t-\tfile)
+                if re.match(r"^(\d+|-)\t(\d+|-)\t", line):
                     current.files += 1
                     parts = line.split("\t", 2)
                     if len(parts) >= 2:
@@ -288,7 +289,7 @@ class Git:
                             current.insertions += int(parts[0])
                             current.deletions += int(parts[1])
                         except ValueError:
-                            pass
+                            pass  # binary: -\t-\t — counted but no line stats
                 # shortstat line
                 elif re.match(r"^\s*\d+ file", line):
                     current.stat = line.strip()
@@ -416,6 +417,33 @@ class State:
     def _ensure_dir(self) -> None:
         """Create .bingo/ directory if it doesn't exist."""
         os.makedirs(self.bingo_dir, exist_ok=True)
+
+    def acquire_lock(self) -> None:
+        """Acquire an exclusive operation lock. Raises BingoError if locked."""
+        self._ensure_dir()
+        lock_path = os.path.join(self.bingo_dir, ".lock")
+        if os.path.isfile(lock_path):
+            try:
+                with open(lock_path) as f:
+                    pid = int(f.read().strip())
+                # Check if the locking process is still running
+                os.kill(pid, 0)
+                raise BingoError(
+                    f"Another bingo-light operation is in progress (pid {pid}). "
+                    "If this is stale, remove .bingo/.lock"
+                )
+            except (ValueError, OSError):
+                pass  # Stale lock — process is gone
+        with open(lock_path, "w") as f:
+            f.write(str(os.getpid()))
+
+    def release_lock(self) -> None:
+        """Release the operation lock."""
+        lock_path = os.path.join(self.bingo_dir, ".lock")
+        try:
+            os.unlink(lock_path)
+        except OSError:
+            pass
 
     # ── Undo ──
 
@@ -604,7 +632,7 @@ class State:
         if os.path.isfile(hook_path) and os.access(hook_path, os.X_OK):
             try:
                 json_data = json.dumps(data or {})
-                subprocess.run(
+                result = subprocess.run(
                     [hook_path],
                     cwd=self.repo_dir,
                     input=json_data,
@@ -612,8 +640,17 @@ class State:
                     text=True,
                     timeout=30,
                 )
-            except Exception:
-                pass
+                if result.returncode != 0:
+                    import sys
+                    print(
+                        f"warning: hook '{event}' exited {result.returncode}",
+                        file=sys.stderr,
+                    )
+            except subprocess.TimeoutExpired:
+                import sys
+                print(f"warning: hook '{event}' timed out", file=sys.stderr)
+            except OSError:
+                pass  # Hook not executable or missing interpreter
 
     # ── Internal helpers ──
 
@@ -684,6 +721,13 @@ class Repo:
         Returns dict with upstream_url, upstream_branch, patches_branch, tracking_branch.
         """
         self._ensure_git_repo()
+        # Guard: reject .bingolight if tracked by git (possible upstream injection)
+        result = self.git.run_unchecked("ls-files", "--error-unmatch", ".bingolight")
+        if result.returncode == 0:
+            raise BingoError(
+                ".bingolight is tracked by git. This is a security risk — "
+                "upstream may have injected it. Run: git rm --cached .bingolight"
+            )
         return self.config.load()
 
     def _ensure_clean(self) -> None:
@@ -720,6 +764,9 @@ class Repo:
             return
 
         # Count non-[bl] commits in tracking..patches
+        # Only auto-fix if there are exactly the expected non-bl commits
+        # (upstream commits that were merged manually after conflict resolution).
+        # If there are too many, something else is wrong — don't touch it.
         try:
             log_output = self.git.run(
                 "log",
@@ -727,10 +774,16 @@ class Repo:
                 f"{c['tracking_branch']}..{c['patches_branch']}",
             )
             non_bl_count = 0
+            total_count = 0
             for line in log_output.splitlines():
+                if not line:
+                    continue
+                total_count += 1
                 if not line.startswith("[bl] "):
                     non_bl_count += 1
-            if non_bl_count > 0:
+            # Only auto-advance if non-bl commits exist AND they don't
+            # outnumber bl commits (heuristic: user manually resolved a sync)
+            if 0 < non_bl_count <= total_count // 2 + 1:
                 self.git.run(
                     "branch", "-f", c["tracking_branch"], upstream_pos
                 )
@@ -771,11 +824,20 @@ class Repo:
             if f"{PATCH_PREFIX} {target}:" in subject:
                 return h
 
-        # Try as partial match
+        # Try as partial match on patch name (not arbitrary substring)
+        matches = []
         for h in commits:
             subject = self.git.run("log", "-1", "--format=%s", h)
-            if target in subject:
-                return h
+            m = re.match(r"^\[bl\] ([^:]+):", subject)
+            if m and target in m.group(1):
+                matches.append(h)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise BingoError(
+                f"Ambiguous patch target '{target}': matches {len(matches)} patches. "
+                "Use the exact name or index number."
+            )
 
         raise BingoError(f"Patch '{target}' not found.")
 
@@ -789,6 +851,8 @@ class Repo:
                 "Must start with a letter or number."
             )
 
+    _CONFLICT_SIZE_LIMIT = 1024 * 1024  # 1MB per file
+
     def _extract_conflict(self, filepath: str) -> ConflictInfo:
         """Parse conflict markers from a file and return ConflictInfo."""
         full_path = os.path.join(self.path, filepath)
@@ -797,14 +861,28 @@ class Repo:
         conflict_count = 0
         state = "normal"
 
+        if not os.path.isfile(full_path):
+            return ConflictInfo(
+                file=filepath, conflict_count=1,
+                ours="", theirs="",
+                merge_hint="File deleted on one side. Decide: keep or remove.",
+            )
+
         try:
+            file_size = os.path.getsize(full_path)
+            if file_size > self._CONFLICT_SIZE_LIMIT:
+                return ConflictInfo(
+                    file=filepath, conflict_count=1,
+                    ours="(file too large to display)",
+                    theirs="(file too large to display)",
+                    merge_hint="Large or binary file conflict. Resolve manually.",
+                )
             with open(full_path) as f:
                 for line in f:
                     if line.startswith("<<<<<<< "):
                         conflict_count += 1
                         state = "ours"
                     elif line.startswith("||||||| "):
-                        # diff3 base marker: skip base section
                         state = "base"
                     elif line.startswith("======="):
                         state = "theirs"
@@ -816,7 +894,11 @@ class Repo:
                         elif state == "theirs":
                             theirs_lines.append(line.rstrip("\n"))
         except IOError:
-            pass
+            return ConflictInfo(
+                file=filepath, conflict_count=1,
+                ours="", theirs="",
+                merge_hint="Cannot read file. Resolve manually.",
+            )
 
         ours = "\n".join(ours_lines)
         theirs = "\n".join(theirs_lines)
@@ -887,8 +969,9 @@ class Repo:
                 upstream_after=upstream_after,
                 patches=patches_list,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            import sys
+            print(f"warning: failed to record sync history: {e}", file=sys.stderr)
 
     def _get_patch_mapping(self, c: dict) -> List[dict]:
         """Get current patches as list of {name, hash} dicts."""
@@ -1172,8 +1255,38 @@ class Repo:
         else:
             _check("patches branch", "fail", "missing")
 
+        # Rebase in progress
+        if self._in_rebase():
+            _check("rebase", "fail", "rebase in progress — resolve or abort")
+        else:
+            _check("rebase", "pass", "none")
+
+        # Stale tracking
+        tracking_head = self.git.rev_parse(c["tracking_branch"])
+        upstream_head = self.git.rev_parse(f"upstream/{c['upstream_branch']}")
+        if tracking_head and upstream_head and tracking_head != upstream_head:
+            behind = self.git.rev_list_count(
+                f"{c['tracking_branch']}..upstream/{c['upstream_branch']}"
+            )
+            if behind > 0:
+                _check(
+                    "tracking_freshness", "warn",
+                    f"{behind} commit(s) behind upstream — run sync",
+                )
+            else:
+                _check("tracking_freshness", "pass", "up to date")
+        elif tracking_head and upstream_head:
+            _check("tracking_freshness", "pass", "up to date")
+
+        # .bingo state directory
+        bingo_dir = os.path.join(self.path, ".bingo")
+        if os.path.isdir(bingo_dir):
+            _check("state_dir", "pass", ".bingo/")
+        else:
+            _check("state_dir", "warn", ".bingo/ missing — undo/history unavailable")
+
         # Patch stack integrity
-        if issues == 0:
+        if issues == 0 and not self._in_rebase():
             base = self._patches_base(c)
             if not base:
                 _check("patch_stack", "pass", "no patches")
@@ -1185,13 +1298,14 @@ class Repo:
                     _check("patch_stack", "pass", "no patches")
                 else:
                     tmp_branch = f"bl-doctor-{os.getpid()}"
+                    original_branch = self.git.current_branch()
                     try:
                         self.git.run("branch", tmp_branch, c["patches_branch"])
                         current_tracking = self.git.rev_parse(c["tracking_branch"])
                         result = self.git.run_unchecked(
                             "rebase",
                             "--onto",
-                            f"upstream/{c['upstream_branch']}",
+                            c["tracking_branch"],
                             current_tracking or c["tracking_branch"],
                             tmp_branch,
                         )
@@ -1204,8 +1318,12 @@ class Repo:
                         else:
                             _check("patch_stack", "fail", "conflicts detected")
                             self.git.run_ok("rebase", "--abort")
-                        self.git.run_ok("checkout", c["patches_branch"])
                     finally:
+                        # Restore original branch before deleting tmp
+                        if original_branch:
+                            self.git.run_ok("checkout", original_branch)
+                        else:
+                            self.git.run_ok("checkout", c["patches_branch"])
                         self.git.run_ok("branch", "-D", tmp_branch)
 
         # Config file
@@ -1392,6 +1510,20 @@ class Repo:
         Returns sync result dict
         """
         c = self._load()
+        if self._in_rebase():
+            raise BingoError(
+                "A rebase is already in progress. Resolve it first with "
+                "'git rebase --continue' or 'git rebase --abort'."
+            )
+        self.state.acquire_lock()
+        try:
+            return self._sync_locked(c, dry_run, force, test)
+        finally:
+            self.state.release_lock()
+
+    def _sync_locked(
+        self, c: dict, dry_run: bool, force: bool, test: bool
+    ) -> dict:
         self._fix_stale_tracking(c)
         self._ensure_clean()
 
@@ -1468,8 +1600,15 @@ class Repo:
             self.git.run("checkout", c["patches_branch"])
 
         # 5. Save current state for rollback
-        saved_head = self.git.rev_parse("HEAD") or ""
-        saved_tracking = self.git.rev_parse(c["tracking_branch"]) or ""
+        saved_head = self.git.rev_parse("HEAD")
+        if not saved_head:
+            raise BingoError("Cannot determine current HEAD. Aborting sync.")
+        saved_tracking = self.git.rev_parse(c["tracking_branch"])
+        if not saved_tracking:
+            raise BingoError(
+                f"Cannot resolve tracking branch '{c['tracking_branch']}'. "
+                "Run 'bingo-light doctor' to diagnose."
+            )
         self.state.save_undo(saved_head, saved_tracking)
 
         # 6. Update tracking branch
@@ -1498,13 +1637,20 @@ class Repo:
                 try:
                     test_result = self.test()
                     if not test_result.get("ok"):
-                        # Undo the sync
-                        self.git.run("branch", "-f", c["patches_branch"], saved_head)
-                        if self.git.current_branch() == c["patches_branch"]:
-                            self.git.run("reset", "--hard", saved_head)
-                        self.git.run(
-                            "branch", "-f", c["tracking_branch"], saved_tracking
-                        )
+                        # Undo the sync — restore both branches
+                        try:
+                            self.git.run(
+                                "branch", "-f", c["patches_branch"], saved_head
+                            )
+                            if self.git.current_branch() == c["patches_branch"]:
+                                self.git.run("reset", "--hard", saved_head)
+                            self.git.run(
+                                "branch", "-f",
+                                c["tracking_branch"], saved_tracking,
+                            )
+                        except GitError:
+                            # Rollback failed — abort any in-progress rebase
+                            self.git.run_ok("rebase", "--abort")
                         self.state.run_hook(
                             "on-test-fail", {"behind_before": behind}
                         )
@@ -1514,8 +1660,17 @@ class Repo:
                             "test": "fail",
                             "auto_undone": True,
                         }
-                except BingoError:
-                    pass
+                except BingoError as e:
+                    # Test command not configured or failed to run —
+                    # sync succeeded but test was skipped
+                    return {
+                        "ok": True,
+                        "synced": True,
+                        "behind_before": behind,
+                        "patches_rebased": patch_count,
+                        "test": "skipped",
+                        "test_error": str(e),
+                    }
 
             return {
                 "ok": True,
@@ -1598,6 +1753,18 @@ class Repo:
         Returns sync result dict with detailed conflict information.
         """
         c = self._load()
+        if self._in_rebase():
+            raise BingoError(
+                "A rebase is already in progress. Resolve it first with "
+                "'git rebase --continue' or 'git rebase --abort'."
+            )
+        self.state.acquire_lock()
+        try:
+            return self._smart_sync_locked(c)
+        finally:
+            self.state.release_lock()
+
+    def _smart_sync_locked(self, c: dict) -> dict:
         self._fix_stale_tracking(c)
         self._ensure_clean()
 
@@ -1640,8 +1807,15 @@ class Repo:
             patch_count = self.git.rev_list_count(f"{base}..{c['patches_branch']}")
 
         # Save state for rollback
-        saved_head = self.git.rev_parse("HEAD") or ""
-        saved_tracking = self.git.rev_parse(c["tracking_branch"]) or ""
+        saved_head = self.git.rev_parse("HEAD")
+        if not saved_head:
+            raise BingoError("Cannot determine current HEAD. Aborting smart-sync.")
+        saved_tracking = self.git.rev_parse(c["tracking_branch"])
+        if not saved_tracking:
+            raise BingoError(
+                f"Cannot resolve tracking branch '{c['tracking_branch']}'. "
+                "Run 'bingo-light doctor' to diagnose."
+            )
         self.state.save_undo(saved_head, saved_tracking)
 
         # Update tracking
@@ -1782,6 +1956,11 @@ class Repo:
             raise BingoError("No previous state found to undo. Have you synced yet?")
 
         current_head = self.git.rev_parse(c["patches_branch"])
+        if not current_head:
+            raise BingoError(
+                f"Patch branch '{c['patches_branch']}' not found. "
+                "Cannot determine current state."
+            )
         if prev_head == current_head:
             return {"ok": True, "message": "nothing to undo"}
 
@@ -1828,8 +2007,10 @@ class Repo:
                             f"A patch named '{name}' already exists. "
                             "Use a different name or drop the existing one."
                         )
+            except BingoError:
+                raise  # re-raise duplicate name errors
             except GitError:
-                pass
+                pass  # git log failed (empty stack, etc.) — safe to continue
 
         # Ensure on patches branch
         if self.git.current_branch() != c["patches_branch"]:
@@ -2012,6 +2193,13 @@ class Repo:
         Returns {"ok": True, "edited": "..."}
         """
         c = self._load()
+        # Check for unstaged changes (staged are expected for patch edit)
+        has_unstaged = not self.git.run_ok("diff", "--quiet")
+        if has_unstaged:
+            raise DirtyTreeError(
+                "Unstaged changes detected. Stage the changes you want to fold "
+                "into the patch with 'git add', or stash unstaged changes first."
+            )
         hash_val = self._resolve_patch(c, target)
 
         has_staged = not self.git.run_ok("diff", "--cached", "--quiet")
@@ -2023,12 +2211,18 @@ class Repo:
 
         subject = self.git.run("log", "-1", "--format=%s", hash_val)
 
+        # Save HEAD before creating fixup commit (for rollback)
+        pre_fixup_head = self.git.rev_parse("HEAD")
+
         # Create a fixup commit
         self.git.run("commit", f"--fixup={hash_val}")
 
         # Non-interactive rebase with autosquash
         base = self._patches_base(c)
         if not base:
+            # Undo fixup commit
+            if pre_fixup_head:
+                self.git.run_ok("reset", "--hard", pre_fixup_head)
             raise BingoError("No patches base found.")
 
         env = os.environ.copy()
@@ -2041,7 +2235,14 @@ class Repo:
             env=env,
         )
         if result.returncode != 0:
-            return {"ok": False, "error": "Rebase conflict while editing patch"}
+            self.git.run_ok("rebase", "--abort")
+            # Remove orphaned fixup commit
+            if pre_fixup_head:
+                self.git.run_ok("reset", "--hard", pre_fixup_head)
+            return {
+                "ok": False,
+                "error": "Rebase conflict while editing patch. Rebase aborted.",
+            }
 
         return {"ok": True, "edited": subject}
 
@@ -2059,7 +2260,16 @@ class Repo:
         if count == 0:
             return {"ok": True, "count": 0, "patches": []}
 
-        abs_output = os.path.join(self.path, output_dir) if not os.path.isabs(output_dir) else output_dir
+        if os.path.isabs(output_dir):
+            abs_output = os.path.realpath(output_dir)
+        else:
+            abs_output = os.path.realpath(os.path.join(self.path, output_dir))
+            # For relative paths, ensure they stay within the repo
+            if not abs_output.startswith(os.path.realpath(self.path)):
+                raise BingoError(
+                    f"Export path escapes repository: {output_dir}. "
+                    "Use a path within the repo or an absolute path."
+                )
         os.makedirs(abs_output, exist_ok=True)
 
         self.git.run(
@@ -2091,11 +2301,14 @@ class Repo:
         Returns {"ok": True, "imported": True, "patch_count": N}
         """
         c = self._load()
+        self._ensure_clean()
 
         if self.git.current_branch() != c["patches_branch"]:
             self.git.run("checkout", c["patches_branch"])
 
-        abs_path = os.path.join(self.path, path) if not os.path.isabs(path) else path
+        abs_path = os.path.realpath(
+            os.path.join(self.path, path) if not os.path.isabs(path) else path
+        )
 
         if os.path.isdir(abs_path):
             series_file = os.path.join(abs_path, "series")
@@ -2105,9 +2318,15 @@ class Repo:
                         line = line.strip()
                         if not line or line.startswith("#"):
                             continue
-                        result = self.git.run_unchecked(
-                            "am", os.path.join(abs_path, line)
+                        # Validate entry stays within the import directory
+                        entry_path = os.path.realpath(
+                            os.path.join(abs_path, line)
                         )
+                        if not entry_path.startswith(abs_path):
+                            raise BingoError(
+                                f"Series entry escapes import directory: {line}"
+                            )
+                        result = self.git.run_unchecked("am", entry_path)
                         if result.returncode != 0:
                             raise BingoError(
                                 f"Failed to apply {line}. "
@@ -2362,12 +2581,16 @@ class Repo:
                 "No test command. Set one with: bingo-light config set test.command 'make test'"
             )
 
-        result = subprocess.run(
-            ["bash", "-c", test_cmd],
-            cwd=self.path,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["bash", "-c", test_cmd],
+                cwd=self.path,
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minute limit
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "test": "timeout", "command": test_cmd}
         if result.returncode == 0:
             return {"ok": True, "test": "pass", "command": test_cmd}
         else:
@@ -2397,6 +2620,23 @@ class Repo:
         output_dir = os.path.join(self.path, ".github", "workflows")
         output_file = os.path.join(output_dir, "bingo-light-sync.yml")
         os.makedirs(output_dir, exist_ok=True)
+
+        # Sanitize config values for shell safety in YAML
+        url = shlex.quote(c["upstream_url"])
+        tb = shlex.quote(c["tracking_branch"])
+        ub = shlex.quote(c["upstream_branch"])
+        pb = shlex.quote(c["patches_branch"])
+
+        # Validate branch names (no shell metacharacters)
+        _branch_re = re.compile(r"^[a-zA-Z0-9._/-]+$")
+        for name, val in [("tracking_branch", c["tracking_branch"]),
+                          ("upstream_branch", c["upstream_branch"]),
+                          ("patches_branch", c["patches_branch"])]:
+            if not _branch_re.match(val):
+                raise BingoError(
+                    f"Unsafe characters in {name}: {val!r}. "
+                    "Branch names must be alphanumeric with . / _ - only."
+                )
 
         workflow = f"""# Generated by bingo-light
 # Automatically syncs your fork with upstream and rebases patches.
@@ -2430,16 +2670,16 @@ jobs:
 
       - name: Fetch upstream
         run: |
-          git remote add upstream {c['upstream_url']} || git remote set-url upstream {c['upstream_url']}
+          git remote add upstream {url} || git remote set-url upstream {url}
           git fetch upstream
 
       - name: Rebase patches
         id: rebase
         run: |
-          SAVED_TRACKING=$(git rev-parse {c['tracking_branch']})
-          git branch -f {c['tracking_branch']} upstream/{c['upstream_branch']}
-          git checkout {c['patches_branch']}
-          if git rebase --onto {c['tracking_branch']} $SAVED_TRACKING {c['patches_branch']} 2>&1; then
+          SAVED_TRACKING=$(git rev-parse {tb})
+          git branch -f {tb} upstream/{ub}
+          git checkout {pb}
+          if git rebase --onto {tb} $SAVED_TRACKING {pb} 2>&1; then
             echo "result=success" >> $GITHUB_OUTPUT
           else
             git rebase --abort || true
@@ -2449,8 +2689,8 @@ jobs:
       - name: Push if successful
         if: steps.rebase.outputs.result == 'success'
         run: |
-          git push origin {c['patches_branch']} --force-with-lease
-          git push origin {c['tracking_branch']} --force-with-lease
+          git push origin {pb} --force-with-lease
+          git push origin {tb} --force-with-lease
 
       - name: Create issue on conflict
         if: steps.rebase.outputs.result == 'conflict'
@@ -2477,12 +2717,28 @@ jobs:
             "schedule": schedule_desc,
         }
 
-    def workspace_init(self) -> dict:
-        """Initialize workspace config."""
+    @staticmethod
+    def _workspace_config_path() -> str:
         config_dir = os.environ.get(
             "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")
         )
-        workspace_config = os.path.join(config_dir, "bingo-light", "workspace.json")
+        return os.path.join(config_dir, "bingo-light", "workspace.json")
+
+    @staticmethod
+    def _load_workspace(config_path: str) -> dict:
+        """Load workspace.json safely, handling corruption."""
+        try:
+            with open(config_path) as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or "repos" not in data:
+                return {"repos": []}
+            return data
+        except (json.JSONDecodeError, IOError):
+            return {"repos": []}
+
+    def workspace_init(self) -> dict:
+        """Initialize workspace config."""
+        workspace_config = self._workspace_config_path()
         os.makedirs(os.path.dirname(workspace_config), exist_ok=True)
         if not os.path.isfile(workspace_config):
             with open(workspace_config, "w") as f:
@@ -2493,23 +2749,33 @@ jobs:
         self, repo_path: str = "", alias: str = ""
     ) -> dict:
         """Add a repo to workspace."""
-        config_dir = os.environ.get(
-            "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")
-        )
-        workspace_config = os.path.join(config_dir, "bingo-light", "workspace.json")
+        workspace_config = self._workspace_config_path()
         if not os.path.isfile(workspace_config):
             raise BingoError("Run 'bingo-light workspace init' first.")
 
         repo_path = repo_path or self.path
-        repo_path = os.path.abspath(repo_path)
+        repo_path = os.path.realpath(repo_path)
         alias = alias or os.path.basename(repo_path)
 
-        with open(workspace_config) as f:
-            data = json.load(f)
+        # Validate the path is a git repo
+        if not os.path.isdir(repo_path):
+            raise BingoError(f"Directory not found: {repo_path}")
+        if not os.path.isdir(os.path.join(repo_path, ".git")):
+            raise BingoError(f"Not a git repository: {repo_path}")
 
+        data = self._load_workspace(workspace_config)
         repos = data.setdefault("repos", [])
-        if not any(r["path"] == repo_path for r in repos):
-            repos.append({"path": repo_path, "alias": alias})
+
+        # Check for duplicate path or alias
+        for r in repos:
+            if r.get("path") == repo_path:
+                raise BingoError(f"Repo already in workspace: {repo_path}")
+            if r.get("alias") == alias:
+                raise BingoError(
+                    f"Alias '{alias}' already in use. Use a different alias."
+                )
+
+        repos.append({"path": repo_path, "alias": alias})
 
         with open(workspace_config, "w") as f:
             json.dump(data, f, indent=2)
@@ -2518,38 +2784,40 @@ jobs:
 
     def workspace_list(self) -> dict:
         """List workspace repos."""
-        config_dir = os.environ.get(
-            "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")
-        )
-        workspace_config = os.path.join(config_dir, "bingo-light", "workspace.json")
+        workspace_config = self._workspace_config_path()
         if not os.path.isfile(workspace_config):
             raise BingoError("No workspace. Run 'bingo-light workspace init'.")
 
-        with open(workspace_config) as f:
-            data = json.load(f)
-        data["ok"] = True
-        return data
+        data = self._load_workspace(workspace_config)
+        return {"ok": True, "repos": data.get("repos", [])}
 
     def workspace_sync(self) -> dict:
         """Sync all workspace repos."""
-        config_dir = os.environ.get(
-            "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")
-        )
-        workspace_config = os.path.join(config_dir, "bingo-light", "workspace.json")
+        workspace_config = self._workspace_config_path()
         if not os.path.isfile(workspace_config):
             raise BingoError("No workspace.")
 
-        with open(workspace_config) as f:
-            data = json.load(f)
+        data = self._load_workspace(workspace_config)
 
         results = []
         for r in data.get("repos", []):
+            alias = r.get("alias", r.get("path", "unknown"))
+            path = r.get("path", "")
+            if not path or not os.path.isdir(path):
+                results.append({
+                    "alias": alias, "status": "failed",
+                    "error": f"Directory not found: {path}",
+                })
+                continue
             try:
-                repo = Repo(r["path"])
+                repo = Repo(path)
                 repo.sync(force=True)
-                results.append({"alias": r["alias"], "status": "ok"})
-            except BingoError as e:
+                results.append({"alias": alias, "status": "ok"})
+            except (BingoError, OSError) as e:
                 status = "conflict" if "conflict" in str(e).lower() else "failed"
-                results.append({"alias": r["alias"], "status": status})
+                results.append({
+                    "alias": alias, "status": status, "error": str(e),
+                })
 
-        return {"ok": True, "synced": results}
+        all_ok = all(r["status"] == "ok" for r in results)
+        return {"ok": all_ok, "synced": results}

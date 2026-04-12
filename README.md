@@ -1,22 +1,18 @@
 <p align="center">
   <br>
-  <code>&nbsp;  _     _                         _ _       _     _    &nbsp;</code><br>
-  <code>&nbsp; | |__ (_)_ __   __ _  ___       | (_) __ _| |__ | |_  &nbsp;</code><br>
-  <code>&nbsp; | '_ \| | '_ \ / _` |/ _ \ ____| | |/ _` | '_ \| __| &nbsp;</code><br>
-  <code>&nbsp; | |_) | | | | | (_| | (_) |____| | | (_| | | | | |_  &nbsp;</code><br>
-  <code>&nbsp; |_.__/|_|_| |_|\__, |\___/     |_|_|\__, |_| |_|\__| &nbsp;</code><br>
-  <code>&nbsp;                |___/                 |___/             &nbsp;</code><br>
-  <br>
-  <strong>AI-native fork maintenance. One command to sync. Zero dependencies.</strong>
+  <img src="docs/logo.svg" alt="bingo-light logo" width="200">
+  <br><br>
+  <strong>Fork maintenance for humans and AI agents.<br>One command to sync. Zero dependencies.</strong>
   <br><br>
   <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
   <br><br>
   <a href="https://github.com/DanOps-1/bingo-light/actions"><img src="https://github.com/DanOps-1/bingo-light/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
+  <a href="https://pypi.org/project/bingo-light/"><img src="https://img.shields.io/pypi/v/bingo-light?color=blue&label=PyPI" alt="PyPI"></a>
   <br>
-  <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP-27_tools-blueviolet.svg" alt="MCP: 27 tools"></a>
-  <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/Made_with-Bash-1f425f.svg" alt="Bash"></a>
+  <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_Server-29_tools-blueviolet.svg" alt="MCP: 29 tools"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-3776ab.svg" alt="Python 3.8+"></a>
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg" alt="Zero deps">
   <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
   <br><br>
@@ -24,17 +20,13 @@
 
 ---
 
-Fork maintenance sucks.
+GitHub's "Sync fork" button breaks the moment you have customizations. `git rebase` is a 6-step ritual. And none of it works from an AI agent.
 
-You fork a project. You add features. Upstream pushes 200 commits. Now your fork is broken, your patches are scattered across merge commits, and `git rebase` is a blood sport.
-
-You've been here. We've all been here.
-
-**bingo-light makes it one command.**
+**bingo-light fixes all three.**
 
 Your patches live as a clean, named stack on top of upstream. Syncing is `bingo-light sync`. Conflicts get remembered so you never solve the same one twice. And if something goes sideways, `bingo-light undo` puts everything back in one second.
 
-One bash script. No dependencies. Works for humans. Built for AI agents.
+Every command speaks JSON. The built-in MCP server gives AI agents 29 tools to manage your fork autonomously -- from init through conflict resolution. No human in the loop required.
 
 ---
 
@@ -82,7 +74,7 @@ That's it. Three commands and your fork stays in sync forever.
 
 ### For Humans
 
-- :wrench: **Single file, zero deps** -- just bash + git. Drop it in PATH and go.
+- :wrench: **Zero deps** -- just Python 3 + git. `pip install bingo-light` and go.
 - :bookmark_tabs: **Named patch stack** -- each customization is one atomic, named commit. No more guessing which changes are yours.
 - :zap: **One-command sync** -- `bingo-light sync` fetches upstream and rebases your patches on top. Done.
 - :brain: **Conflict memory** -- git rerere auto-enabled. Resolve a conflict once, never resolve it again.
@@ -100,7 +92,7 @@ That's it. Three commands and your fork stays in sync forever.
 
 ### For AI Agents
 
-- :electric_plug: **MCP server (27 tools)** -- full fork management from init through conflict resolution.
+- :electric_plug: **MCP server (29 tools)** -- full fork management from init through conflict resolution.
 - :bar_chart: **`--json` on everything** -- every command returns structured JSON. Parse, don't scrape.
 - :mute: **`--yes` flag** -- fully non-interactive. No TTY required. No prompts. Ever.
 - :gear: **Auto-detect non-TTY** -- pipes and subprocesses trigger non-interactive mode automatically.
@@ -113,7 +105,13 @@ That's it. Three commands and your fork stays in sync forever.
 
 ## Installation
 
-### Interactive installer (recommended)
+### pip (recommended)
+
+```bash
+pip install bingo-light
+```
+
+### Interactive installer
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
@@ -136,14 +134,7 @@ make install       # copies to /usr/local/bin
 make completions   # bash/zsh/fish tab completion
 ```
 
-### Manual (just the script)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-light \
-  -o /usr/local/bin/bingo-light && chmod +x /usr/local/bin/bingo-light
-```
-
-**Requirements:** bash 4.0+, git 2.20+. Python 3.8+ only if you want the MCP server.
+**Requirements:** Python 3.8+, git 2.20+. No other dependencies.
 
 ---
 
@@ -178,7 +169,7 @@ curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/bingo-lig
 
 ## For AI Agents
 
-bingo-light was designed from day one for AI agents. Every command speaks JSON. The MCP server exposes 27 tools. Non-interactive mode is the default when stdin is not a TTY.
+bingo-light was designed from day one for AI agents. Every command speaks JSON. The MCP server exposes 29 tools covering the full lifecycle from `init` to `conflict-resolve`. Non-interactive mode is the default when stdin is not a TTY.
 
 ### MCP setup -- Claude Code
 
@@ -212,7 +203,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 **Any MCP client** (VS Code Copilot, Cursor, custom agents): connect via stdio to `python3 mcp-server.py`.
 
-### 27 MCP Tools
+### 29 MCP Tools
 
 | Tool | Purpose |
 |------|---------|
@@ -364,20 +355,43 @@ bingo-light help                              Show usage
 
 ---
 
+## Why not just...
+
+<details>
+<summary><b>...click GitHub's "Sync fork" button?</b></summary>
+<br>
+
+It only does fast-forward. The moment you have any customizations (commits on your fork that aren't in upstream), it either refuses or creates a merge commit that buries your changes. It has no concept of a patch stack, no conflict memory, and no API for AI agents.
+</details>
+
+<details>
+<summary><b>...use <code>git rebase</code> manually?</b></summary>
+<br>
+
+You can. It takes 6 steps: fetch, checkout tracking branch, pull, checkout patches branch, rebase, push. You need to remember which branch is which, manually enable rerere, and hope you don't mess up the reflog if something goes wrong. bingo-light wraps all of this into `bingo-light sync` with automatic undo, conflict prediction, and structured output.
+</details>
+
+<details>
+<summary><b>...use StGit / quilt / TopGit?</b></summary>
+<br>
+
+StGit (649 stars) manages patch stacks but has no AI integration, no MCP server, no JSON output, and no conflict prediction. quilt operates outside git entirely -- no rerere, no history. TopGit is effectively abandoned. None of them were designed for the AI-agent era.
+</details>
+
 ## Comparison
 
-| | **bingo-light** | git rebase (manual) | quilt | Stacked Diffs (spr/ghstack) |
-|---|:---:|:---:|:---:|:---:|
-| Named patch stack | **Yes** | No | Yes | Yes |
-| One-command sync | **Yes** | No (multi-step) | No (manual) | Partial |
-| Conflict memory (rerere) | **Auto** | Manual enable | No | No |
-| Conflict prediction | **Yes** | No | No | No |
-| AI / MCP integration | **27 tools** | No | No | No |
-| JSON output | **All commands** | No | No | Partial |
-| Non-interactive mode | **Native** | Partial | Partial | Yes |
-| Undo sync | **One command** | git reflog | Manual | Depends |
-| Dependencies | bash + git | git | quilt | Language-specific |
-| Install complexity | Single file copy | Built-in | Package manager | Package manager |
+| | **bingo-light** | GitHub Sync | git rebase | quilt | StGit |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Named patch stack | **Yes** | No | No | Yes | Yes |
+| One-command sync | **Yes** | Click only | No (6 steps) | No | No |
+| Handles customizations | **Yes** | **No** | Manual | Manual | Manual |
+| Conflict memory (rerere) | **Auto** | No | Manual | No | No |
+| Conflict prediction | **Yes** | No | No | No | No |
+| AI / MCP integration | **29 tools** | No | No | No | No |
+| JSON output | **All commands** | No | No | No | No |
+| Non-interactive mode | **Native** | No | Partial | Partial | Partial |
+| Undo sync | **One command** | No | git reflog | Manual | Manual |
+| Install | `pip install` | Built-in | Built-in | Package mgr | Package mgr |
 
 ---
 
@@ -437,8 +451,9 @@ Yes. bingo-light uses standard git operations (fetch, rebase, push). It works wi
 ## Project Ecosystem
 
 ```
-bingo-light          CLI tool (single bash script, the whole thing)
-mcp-server.py        MCP server (zero-dep Python 3, 27 tools, JSON-RPC 2.0)
+bingo-light          CLI tool (Python 3, zero deps)
+bingo_core.py        Core library (all business logic)
+mcp-server.py        MCP server (zero-dep Python 3, 29 tools, JSON-RPC 2.0)
 agent.py             Advisor agent (monitors drift, auto-syncs when safe)
 tui.py               Terminal dashboard (curses TUI, real-time monitoring)
 install.sh           Interactive installer (animated, sets up everything)
@@ -460,13 +475,14 @@ llms.txt             Complete LLM-consumable reference
 
 ## Contributing
 
-The entire CLI is a single bash script. The MCP server is a single Python file. There's no build step. If you can read bash, you can contribute.
+Pure Python, zero dependencies, no build step. If you can read Python, you can contribute.
 
 ```bash
 git clone https://github.com/DanOps-1/bingo-light.git
 cd bingo-light
-make test    # 70 tests
-make lint    # shellcheck
+make test       # core test suite
+make test-all   # all 250 tests (core + fuzz + edge + MCP + unit)
+make lint       # python syntax + flake8 + shellcheck
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.

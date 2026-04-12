@@ -11,13 +11,20 @@ else
     # Running via curl pipe — download to temp dir
     SCRIPT_DIR="$(mktemp -d)"
     _CLEANUP_DIR="$SCRIPT_DIR"
-    curl -fsSL "$GITHUB_RAW/bingo-light" -o "$SCRIPT_DIR/bingo-light"
-    curl -fsSL "$GITHUB_RAW/mcp-server.py" -o "$SCRIPT_DIR/mcp-server.py"
-    curl -fsSL "$GITHUB_RAW/.claude/commands/bingo.md" -o "$SCRIPT_DIR/bingo.md"
+    _download() {
+        if ! curl -fsSL "$1" -o "$2"; then
+            echo "Error: failed to download $1" >&2
+            exit 1
+        fi
+    }
+    _download "$GITHUB_RAW/bingo-light" "$SCRIPT_DIR/bingo-light"
+    _download "$GITHUB_RAW/bingo_core.py" "$SCRIPT_DIR/bingo_core.py"
+    _download "$GITHUB_RAW/mcp-server.py" "$SCRIPT_DIR/mcp-server.py"
+    _download "$GITHUB_RAW/.claude/commands/bingo.md" "$SCRIPT_DIR/bingo.md"
     mkdir -p "$SCRIPT_DIR/completions"
-    curl -fsSL "$GITHUB_RAW/completions/bingo-light.bash" -o "$SCRIPT_DIR/completions/bingo-light.bash"
-    curl -fsSL "$GITHUB_RAW/completions/bingo-light.zsh" -o "$SCRIPT_DIR/completions/bingo-light.zsh"
-    curl -fsSL "$GITHUB_RAW/completions/bingo-light.fish" -o "$SCRIPT_DIR/completions/bingo-light.fish"
+    _download "$GITHUB_RAW/completions/bingo-light.bash" "$SCRIPT_DIR/completions/bingo-light.bash"
+    _download "$GITHUB_RAW/completions/bingo-light.zsh" "$SCRIPT_DIR/completions/bingo-light.zsh"
+    _download "$GITHUB_RAW/completions/bingo-light.fish" "$SCRIPT_DIR/completions/bingo-light.fish"
 fi
 
 # ─── Terminal Control ─────────────────────────────────────────────────────────
@@ -179,10 +186,20 @@ step_cli() {
     fi
 
     (
+        # Backup existing installation
+        if [[ -f /usr/local/bin/bingo-light ]]; then
+            if [[ ! -w "/usr/local/bin" ]]; then
+                sudo cp /usr/local/bin/bingo-light /usr/local/bin/bingo-light.bak 2>/dev/null || true
+            else
+                cp /usr/local/bin/bingo-light /usr/local/bin/bingo-light.bak 2>/dev/null || true
+            fi
+        fi
         if [[ ! -w "/usr/local/bin" ]]; then
             sudo install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
+            sudo install -m 644 "$SCRIPT_DIR/bingo_core.py" /usr/local/bin/bingo_core.py
         else
             install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
+            install -m 644 "$SCRIPT_DIR/bingo_core.py" /usr/local/bin/bingo_core.py
         fi
     ) &
     if spin $! "Installing CLI..."; then
@@ -223,7 +240,7 @@ step_completions() {
             local dir="$HOME/.zfunc"
             mkdir -p "$dir"
             cp "$SCRIPT_DIR/completions/bingo-light.zsh" "$dir/_bingo-light"
-            if ! grep -q '.zfunc' ~/.zshrc 2>/dev/null; then
+            if ! grep -qF '.zfunc' ~/.zshrc 2>/dev/null; then
                 echo 'fpath=(~/.zfunc $fpath)' >> ~/.zshrc
                 echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
             fi

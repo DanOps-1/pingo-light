@@ -87,11 +87,21 @@ def call_llm(system: str, prompt: str, model: str = "claude-sonnet-4-20250514") 
             req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers=headers)
             with urllib.request.urlopen(req, timeout=120) as resp:
                 return json.loads(resp.read())["content"][0]["text"]
-        except (urllib.error.HTTPError, urllib.error.URLError):
+        except urllib.error.HTTPError as e:
+            # Don't retry client errors (400, 401, 403)
+            if 400 <= e.code < 500 and e.code != 429:
+                return ""
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_BASE_DELAY * (2 ** (attempt - 1)))
                 continue
-            return ""  # Fail gracefully
+            return ""
+        except (urllib.error.URLError, OSError, ValueError):
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+                continue
+            return ""
+        except (KeyError, IndexError, json.JSONDecodeError):
+            return ""  # Unexpected response shape
     return ""
 
 # ─── State ────────────────────────────────────────────────────────────────────
@@ -99,14 +109,20 @@ def call_llm(system: str, prompt: str, model: str = "claude-sonnet-4-20250514") 
 def load_state(cwd: str) -> dict:
     path = os.path.join(cwd, STATE_FILE)
     if os.path.exists(path):
-        with open(path) as f:
-            return json.load(f)
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass  # Corrupted state — reset to defaults
     return {"last_check": None, "last_sync": None, "sync_count": 0, "reports": 0}
 
 
 def save_state(cwd: str, state: dict):
-    with open(os.path.join(cwd, STATE_FILE), "w") as f:
+    path = os.path.join(cwd, STATE_FILE)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w") as f:
         json.dump(state, f, indent=2, default=str)
+    os.replace(tmp_path, path)  # Atomic rename
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -175,6 +191,14 @@ def analyze_conflict_details(cwd: str) -> list[dict]:
             continue
         full_path = os.path.join(cwd, file_path)
         if not os.path.exists(full_path):
+            continue
+
+        # Skip very large files (>1MB) to avoid OOM
+        try:
+            if os.path.getsize(full_path) > 1024 * 1024:
+                conflicts.append({"file": file_path, "regions": [], "patch": "", "note": "file too large"})
+                continue
+        except OSError:
             continue
 
         with open(full_path) as f:
@@ -512,16 +536,17 @@ def agent_cycle(cwd: str, model: str, full_report: bool = False) -> dict:
         f.write(report)
     log(f"  report saved to {REPORT_FILE}")
 
-    save_state(cwd, state)
-
     synced = sync_result and sync_result.get("synced", False)
     has_conflict = sync_result and sync_result.get("conflict", False)
+
+    if has_conflict:
+        state["reports"] = state.get("reports", 0) + 1
+
+    save_state(cwd, state)
 
     if synced:
         return {"action": "synced", "success": True, "details": f"Synced {behind} commit(s), {patch_count} patch(es) rebased.", "report": report}
     elif has_conflict:
-        state["reports"] = state.get("reports", 0) + 1
-        save_state(cwd, state)
         return {"action": "conflict_report", "success": True, "details": f"Conflict detected. Report saved to {REPORT_FILE}", "report": report}
     else:
         return {"action": "report", "success": True, "details": "Analysis complete.", "report": report}
@@ -543,13 +568,16 @@ def notify(cwd: str, result: dict):
         try:
             title = f"[bingo-light] Upstream sync needs attention ({datetime.now().strftime('%Y-%m-%d')})"
             body = result.get("report", details)
-            subprocess.run(
+            gh_result = subprocess.run(
                 ["gh", "issue", "create", "--title", title, "--body", body, "--label", "bingo-light,sync-conflict"],
                 cwd=cwd, capture_output=True, text=True, timeout=30,
             )
-            log("  GitHub Issue created for visibility.")
-        except Exception:
-            pass
+            if gh_result.returncode == 0:
+                log("  GitHub Issue created for visibility.")
+            else:
+                log("  GitHub Issue creation failed (gh CLI error).")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # gh not installed or timed out
     elif action == "none":
         log(f"DONE: {details}")
     elif action == "error":
@@ -562,10 +590,14 @@ def notify(cwd: str, result: dict):
 
 def parse_interval(s: str) -> int:
     s = s.strip().lower()
-    if s.endswith("h"):   return int(s[:-1]) * 3600
-    elif s.endswith("m"): return int(s[:-1]) * 60
-    elif s.endswith("d"): return int(s[:-1]) * 86400
-    else: return int(s)
+    try:
+        if s.endswith("h"):   return int(s[:-1]) * 3600
+        elif s.endswith("m"): return int(s[:-1]) * 60
+        elif s.endswith("d"): return int(s[:-1]) * 86400
+        else: return int(s)
+    except ValueError:
+        print(f"Error: invalid interval '{s}'. Use a number with optional suffix: 30, 5m, 1h, 1d", file=sys.stderr)
+        sys.exit(1)
 
 
 def watch_loop(cwd: str, interval: int, model: str):
@@ -626,6 +658,9 @@ Environment:
     cwd = os.path.abspath(args.cwd)
     if not os.path.isdir(os.path.join(cwd, ".git")):
         print(f"Error: {cwd} is not a git repository.", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(os.path.join(cwd, ".bingolight")):
+        print(f"Error: {cwd} is not initialized with bingo-light. Run 'bingo-light init' first.", file=sys.stderr)
         sys.exit(1)
 
     if args.watch:

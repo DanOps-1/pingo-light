@@ -36,7 +36,11 @@ def run_bl(args, cwd="."):
             env={**os.environ, "NO_COLOR": "1"},
         )
         return json.loads(result.stdout) if result.stdout.strip() else {"ok": False}
-    except Exception:
+    except FileNotFoundError:
+        return {"ok": False, "error": f"bingo-light not found at: {BL}"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "command timed out"}
+    except (json.JSONDecodeError, OSError):
         return {"ok": False, "error": "command failed"}
 
 
@@ -44,9 +48,12 @@ def get_workspace_repos():
     config = os.path.expanduser("~/.config/bingo-light/workspace.json")
     if not os.path.exists(config):
         return []
-    with open(config) as f:
-        data = json.load(f)
-    return data.get("repos", [])
+    try:
+        with open(config) as f:
+            data = json.load(f)
+        return data.get("repos", [])
+    except (json.JSONDecodeError, IOError):
+        return []
 
 
 def draw_header(win, y, text, width):
@@ -69,6 +76,14 @@ def draw_repo_status(win, y, status, alias="", selected=False):
     branch = status.get("current_branch", "?")
 
     label = alias or branch
+
+    # Show error if status failed
+    err = status.get("error", "")
+    if not status.get("ok", True) and err:
+        line = f" {label:20s}  ERROR: {err}"
+        win.addnstr(y, 0, line[:width - 1], width - 1, attr)
+        return y + 2
+
     state = "UP TO DATE" if up_to_date else f"BEHIND {behind}"
     risk_str = f"RISK: {len(risk)} file(s)" if risk else "no risk"
 
@@ -128,25 +143,40 @@ def main(stdscr):
     selected = min(selected, max(0, len(repos) - 1))
 
     while True:
-        stdscr.clear()
-        height, width = stdscr.getmaxyx()
+        try:
+            stdscr.clear()
+            height, width = stdscr.getmaxyx()
 
-        draw_header(stdscr, 0, "bingo-light TUI", width)
-        stdscr.addnstr(1, 0, "─" * width, width)
+            if height < 4 or width < 20:
+                stdscr.addnstr(0, 0, "Terminal too small", min(width, 18))
+                stdscr.refresh()
+                stdscr.timeout(500)
+                key = stdscr.getch()
+                if key == ord("q"):
+                    break
+                elif key == curses.KEY_RESIZE:
+                    continue
+                continue
 
-        y = 3
-        for i, repo in enumerate(repos):
-            if y >= height - 2:
-                break
-            status = statuses.get(repo["path"], {})
-            y = draw_repo_status(stdscr, y, status, repo.get("alias", ""), selected == i)
+            draw_header(stdscr, 0, "bingo-light TUI", width)
+            stdscr.addnstr(1, 0, "─" * width, width)
 
-        # Footer
-        footer = " [s]ync  [d]ry-run  [r]efresh  [j/k]navigate  [q]uit "
-        if height > 2:
-            stdscr.addnstr(height - 1, 0, footer.center(width)[:width - 1], width - 1, curses.A_DIM)
+            y = 3
+            for i, repo in enumerate(repos):
+                if y >= height - 2:
+                    break
+                status = statuses.get(repo["path"], {})
+                y = draw_repo_status(stdscr, y, status, repo.get("alias", ""), selected == i)
 
-        stdscr.refresh()
+            # Footer
+            footer = " [s]ync  [d]ry-run  [r]efresh  [j/k]navigate  [q]uit "
+            if height > 2:
+                stdscr.addnstr(height - 1, 0, footer.center(width)[:width - 2], width - 2, curses.A_DIM)
+
+            stdscr.refresh()
+        except curses.error:
+            # Terminal resized mid-draw — retry on next iteration
+            pass
 
         # Auto-refresh every 30s
         now = time.time()
