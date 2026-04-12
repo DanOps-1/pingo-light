@@ -10,7 +10,7 @@ class BingoLight < Formula
 
   def install
     bin.install "bingo-light"
-    bin.install "bingo_core.py"
+    (lib/"bingo_core").install Dir["bingo_core/*.py"]
     bin.install "mcp-server.py" => "bingo-light-mcp"
     bin.install "agent.py" => "bingo-light-agent"
     bin.install "tui.py" => "bingo-light-tui"

@@ -1,5 +1,5 @@
 """
-test_core.py — Unit tests for bingo_core.py
+test_core.py — Unit tests for bingo_core package
 
 Uses unittest + real temp git repos.
 """

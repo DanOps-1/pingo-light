@@ -31,7 +31,7 @@ Open an issue using the **Bug Report** template. Include:
 
 ```
 bingo-light          # Python CLI (entry point)
-bingo_core.py        # Core library (all business logic)
+bingo_core/          # Core library package (all business logic)
 mcp-server.py        # MCP server (zero-dep Python 3, 29 tools)
 agent.py             # Advisor agent
 tui.py               # Terminal dashboard
@@ -44,7 +44,7 @@ docs/                # Additional documentation
 
 ## Code style
 
-- **Two-file Python CLI**: `bingo-light` is the entry point, `bingo_core.py` has all logic. Keep the separation.
+- **CLI + core package**: `bingo-light` is the entry point, `bingo_core/` package has all logic. Keep the separation.
 - **Flake8 clean**: all Python code must pass flake8
 - **ShellCheck clean**: all bash code must pass shellcheck
 - **snake_case** for variables and functions

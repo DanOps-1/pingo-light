@@ -467,7 +467,7 @@ StGit（649 stars）管理补丁栈但没有 AI 集成、没有 MCP 服务器、
 
 ```
 bingo-light          CLI 入口（Python 3，零依赖）
-bingo_core.py        核心库（全部业务逻辑）
+bingo_core/          核心库包（全部业务逻辑）
 mcp-server.py        MCP 服务器（零依赖 Python 3，29 个工具）
 agent.py             Advisor 代理（监控 + 分析 + 安全时自动同步）
 tui.py               终端面板（curses TUI）

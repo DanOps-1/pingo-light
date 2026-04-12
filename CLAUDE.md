@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-bingo-light is an AI-native fork maintenance tool. It manages customizations as a clean patch stack on top of upstream, with `--json` and `--yes` flags for AI agent consumption. Python CLI (`bingo-light` + `bingo_core.py`) + MCP server (Python 3, 29 tools).
+bingo-light is an AI-native fork maintenance tool. It manages customizations as a clean patch stack on top of upstream, with `--json` and `--yes` flags for AI agent consumption. Python CLI (`bingo-light` + `bingo_core/` package) + MCP server (Python 3, 29 tools).
 
 ## Commands
 
@@ -23,7 +23,7 @@ python3 ./tests/test_core.py    # Python unit tests
 
 # Syntax check without running:
 python3 -c "import py_compile; py_compile.compile('bingo-light', doraise=True)"
-python3 -c "import py_compile; py_compile.compile('bingo_core.py', doraise=True)"
+python3 -c "import py_compile; py_compile.compile('bingo_core/__init__.py', doraise=True)"
 python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)"
 ```
 
@@ -31,7 +31,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 
 **bingo-light** (Python 3) — CLI entry point. Delegates all business logic to `bingo_core.Repo`. Handles argparse, human-readable formatting, and exit codes. Every command has two output paths: human-readable (default) and JSON (`--json` flag).
 
-**bingo_core.py** (Python 3) — Core library. All business logic: sync, patches, conflict analysis, workspace, doctor, etc. Config stored in `.bingolight` via `git config --file`. Uses `.bingo/.lock` for concurrency protection.
+**bingo_core/** (Python 3 package) — Core library. Split into `exceptions.py`, `models.py`, `git.py`, `config.py`, `state.py`, `repo.py`, with `__init__.py` re-exporting all public names. All business logic: sync, patches, conflict analysis, workspace, doctor, etc. Config stored in `.bingolight` via `git config --file`. Uses `.bingo/.lock` for concurrency protection.
 
 **mcp-server.py** (Python 3, stdlib only) — Thin MCP wrapper over the CLI. Calls `run_bl()` which spawns `bingo-light --json --yes` as a subprocess. Adds `--json --yes` to ALL commands automatically. Has `try/except` around `handle_tool_call()` to prevent crashes from bad input. Uses Content-Length framed JSON-RPC 2.0 over stdio.
 
@@ -41,7 +41,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 
 ## Critical patterns to follow when editing
 
-**Return dicts, not prints**: Every `Repo` method returns a dict with `ok` key. The CLI formats it for human output. Never `print()` from `bingo_core.py`.
+**Return dicts, not prints**: Every `Repo` method returns a dict with `ok` key. The CLI formats it for human output. Never `print()` from `bingo_core/`.
 
 **Git subprocess safety**: All `git` calls go through `Git.run()` / `Git.run_ok()` / `Git.run_unchecked()`. Never use `subprocess.run(["git", ...])` directly except in rebase continue paths (which need custom env).
 
@@ -65,7 +65,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 ## Sync points — data that lives in multiple files
 
 **VERSION** (currently 2.0.0) — change ALL of these together:
-- `bingo_core.py:25` — source of truth
+- `bingo_core/__init__.py` — source of truth
 
 - `mcp-server.py` — `"version"` in initialize response
 - `contrib/homebrew/bingo-light.rb` — tar.gz URL
@@ -85,7 +85,7 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 
 ## When adding a new command
 
-1. `bingo_core.py` — add method to `Repo` class, return dict with `ok` key
+1. `bingo_core/repo.py` — add method to `Repo` class, return dict with `ok` key
 2. `bingo-light` — add argparse + dispatch + formatter
 3. `completions/*.bash`, `.zsh`, `.fish` — add to completion list
 5. `llms.txt` — add to command reference

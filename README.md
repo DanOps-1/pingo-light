@@ -445,7 +445,7 @@ Yes. bingo-light uses standard git operations (fetch, rebase, push). It works wi
 
 ```
 bingo-light          CLI tool (Python 3, zero deps)
-bingo_core.py        Core library (all business logic)
+bingo_core/          Core library package (all business logic)
 mcp-server.py        MCP server (zero-dep Python 3, 29 tools, JSON-RPC 2.0)
 agent.py             Advisor agent (monitors drift, auto-syncs when safe)
 tui.py               Terminal dashboard (curses TUI, real-time monitoring)

@@ -18,7 +18,14 @@ else
         fi
     }
     _download "$GITHUB_RAW/bingo-light" "$SCRIPT_DIR/bingo-light"
-    _download "$GITHUB_RAW/bingo_core.py" "$SCRIPT_DIR/bingo_core.py"
+    mkdir -p "$SCRIPT_DIR/bingo_core"
+    _download "$GITHUB_RAW/bingo_core/__init__.py" "$SCRIPT_DIR/bingo_core/__init__.py"
+    _download "$GITHUB_RAW/bingo_core/exceptions.py" "$SCRIPT_DIR/bingo_core/exceptions.py"
+    _download "$GITHUB_RAW/bingo_core/models.py" "$SCRIPT_DIR/bingo_core/models.py"
+    _download "$GITHUB_RAW/bingo_core/git.py" "$SCRIPT_DIR/bingo_core/git.py"
+    _download "$GITHUB_RAW/bingo_core/config.py" "$SCRIPT_DIR/bingo_core/config.py"
+    _download "$GITHUB_RAW/bingo_core/state.py" "$SCRIPT_DIR/bingo_core/state.py"
+    _download "$GITHUB_RAW/bingo_core/repo.py" "$SCRIPT_DIR/bingo_core/repo.py"
     _download "$GITHUB_RAW/mcp-server.py" "$SCRIPT_DIR/mcp-server.py"
     _download "$GITHUB_RAW/.claude/commands/bingo.md" "$SCRIPT_DIR/bingo.md"
     mkdir -p "$SCRIPT_DIR/completions"
@@ -196,10 +203,16 @@ step_cli() {
         fi
         if [[ ! -w "/usr/local/bin" ]]; then
             sudo install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
-            sudo install -m 644 "$SCRIPT_DIR/bingo_core.py" /usr/local/bin/bingo_core.py
+            sudo mkdir -p /usr/local/bin/bingo_core
+            for f in "$SCRIPT_DIR"/bingo_core/*.py; do
+                sudo install -m 644 "$f" /usr/local/bin/bingo_core/"$(basename "$f")"
+            done
         else
             install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
-            install -m 644 "$SCRIPT_DIR/bingo_core.py" /usr/local/bin/bingo_core.py
+            mkdir -p /usr/local/bin/bingo_core
+            for f in "$SCRIPT_DIR"/bingo_core/*.py; do
+                install -m 644 "$f" /usr/local/bin/bingo_core/"$(basename "$f")"
+            done
         fi
     ) &
     if spin $! "Installing CLI..."; then

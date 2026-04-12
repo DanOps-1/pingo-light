@@ -64,13 +64,19 @@ jobs:
       - name: Python syntax check
         run: |
           python3 -c "import py_compile; py_compile.compile('bingo-light', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/__init__.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/exceptions.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/models.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/git.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/config.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/state.py', doraise=True)"
+          python3 -c "import py_compile; py_compile.compile('bingo_core/repo.py', doraise=True)"
           python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)"
 
       - name: Flake8
         run: |
           pip install flake8
-          flake8 bingo-light bingo_core.py mcp-server.py --max-line-length=120 --ignore=E501,W503,E302,E305,E402
+          flake8 bingo-light bingo_core/ mcp-server.py --max-line-length=120 --ignore=E501,W503,E302,E305,E402
 
       - name: ShellCheck (bash scripts)
         run: |
@@ -86,8 +92,8 @@ jobs:
 
       - name: VERSION consistency
         run: |
-          V=$(python3 -c "import re; print(re.search(r'VERSION\s*=\s*\"(.+?)\"', open('bingo_core.py').read()).group(1))")
-          echo "Source of truth: bingo_core.py VERSION=$V"
+          V=$(python3 -c "import re; print(re.search(r'VERSION\s*=\s*\"(.+?)\"', open('bingo_core/__init__.py').read()).group(1))")
+          echo "Source of truth: bingo_core/__init__.py VERSION=$V"
           FAIL=0
           check() { if [ "$2" != "$V" ]; then echo "::error::$1 has version $2, expected $V"; FAIL=1; fi; }
           check "mcp-server.py" "$(python3 -c "import re; print(re.search(r'\"version\":\s*\"(.+?)\"', open('mcp-server.py').read()).group(1))")"

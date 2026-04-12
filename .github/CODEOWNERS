@@ -3,7 +3,7 @@
 
 # Core
 /bingo-light        @DanOps-1
-/bingo_core.py      @DanOps-1
+/bingo_core/        @DanOps-1
 /mcp-server.py      @DanOps-1
 
 # Tests

@@ -1,11 +1,5 @@
 """
-bingo_core.py — Complete Python core library for bingo-light.
-
-AI-native fork maintenance: manages customizations as a clean patch stack
-on top of upstream. Every public method returns a dict with {"ok": True, ...}
-or raises BingoError.
-
-Python 3.8+ stdlib only. No pip dependencies.
+bingo_core.repo — Repo class: top-level facade with ALL bingo-light commands.
 """
 
 from __future__ import annotations
@@ -16,681 +10,32 @@ import re
 import shlex
 import subprocess
 import tempfile
-from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
-
-# ─── Constants ────────────────────────────────────────────────────────────────
-
-VERSION = "2.0.0"
-PATCH_PREFIX = "[bl]"
-CONFIG_FILE = ".bingolight"
-BINGO_DIR = ".bingo"
-DEFAULT_TRACKING = "upstream-tracking"
-DEFAULT_PATCHES = "bingo-patches"
-MAX_PATCHES = 100
-MAX_DIFF_SIZE = 50000
-PATCH_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
-PATCH_NAME_MAX = 100
-CIRCUIT_BREAKER_LIMIT = 3
-RERERE_MAX_ITER = 50
-MAX_RESOLVE_ITER = 20
-SYNC_HISTORY_MAX = 50
-
-
-# ─── Exceptions ───────────────────────────────────────────────────────────────
-
-
-class BingoError(Exception):
-    """Base error for bingo-light operations."""
-
-
-class GitError(BingoError):
-    """A git command failed."""
-
-    def __init__(self, cmd: List[str], returncode: int, stderr: str):
-        self.cmd = cmd
-        self.returncode = returncode
-        self.stderr = stderr
-        super().__init__(
-            f"git command failed (exit {returncode}): {' '.join(cmd)}\n{stderr}"
-        )
-
-
-class NotGitRepoError(BingoError):
-    """Not inside a git repository."""
-
-    def __init__(self):
-        super().__init__("Not a git repository. Run this inside a git repo.")
-
-
-class NotInitializedError(BingoError):
-    """bingo-light not initialized in this repo."""
-
-    def __init__(self):
-        super().__init__(
-            "bingo-light not initialized. Run: bingo-light init <upstream-url>"
-        )
-
-
-class DirtyTreeError(BingoError):
-    """Working tree has uncommitted changes."""
-
-    def __init__(self, msg: str = ""):
-        super().__init__(
-            msg or "Working tree is dirty. Commit or stash your changes first."
-        )
-
-
-# ─── Data Classes ─────────────────────────────────────────────────────────────
-
-
-@dataclass
-class PatchInfo:
-    """Information about a single patch in the stack."""
-
-    name: str
-    hash: str
-    subject: str
-    files: int = 0
-    stat: str = ""
-    insertions: int = 0
-    deletions: int = 0
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass
-class ConflictInfo:
-    """Information about a conflict in a single file."""
-
-    file: str
-    ours: str = ""
-    theirs: str = ""
-    conflict_count: int = 0
-    merge_hint: str = ""
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-# ─── Git Class ────────────────────────────────────────────────────────────────
-
-
-class Git:
-    """Unified git subprocess wrapper. All git calls go through here."""
-
-    def __init__(self, cwd: Optional[str] = None):
-        self.cwd = cwd or os.getcwd()
-
-    def run(self, *args: str, check: bool = True) -> str:
-        """Run a git command and return stdout (stripped).
-
-        Args:
-            *args: git subcommand and arguments (e.g. "rev-parse", "HEAD")
-            check: if True, raise GitError on non-zero exit
-
-        Returns:
-            stdout as stripped string
-
-        Raises:
-            GitError: if check=True and command fails
-        """
-        cmd = ["git"] + list(args)
-        result = subprocess.run(
-            cmd,
-            cwd=self.cwd,
-            capture_output=True,
-            text=True,
-        )
-        if check and result.returncode != 0:
-            raise GitError(cmd, result.returncode, result.stderr.strip())
-        return result.stdout.strip()
-
-    def run_ok(self, *args: str) -> bool:
-        """Run a git command and return True if it succeeds."""
-        try:
-            cmd = ["git"] + list(args)
-            result = subprocess.run(
-                cmd,
-                cwd=self.cwd,
-                capture_output=True,
-                text=True,
-            )
-            return result.returncode == 0
-        except Exception:
-            return False
-
-    def run_unchecked(self, *args: str) -> subprocess.CompletedProcess:
-        """Run a git command and return the full CompletedProcess."""
-        cmd = ["git"] + list(args)
-        return subprocess.run(
-            cmd,
-            cwd=self.cwd,
-            capture_output=True,
-            text=True,
-        )
-
-    def rev_parse(self, ref: str) -> Optional[str]:
-        """Resolve a ref to a commit hash. Returns None if missing."""
-        try:
-            return self.run("rev-parse", ref)
-        except GitError:
-            return None
-
-    def rev_parse_short(self, ref: str) -> str:
-        """Resolve a ref to a short commit hash."""
-        try:
-            return self.run("rev-parse", "--short", ref)
-        except GitError:
-            return ""
-
-    def rev_list_count(self, range_spec: str) -> int:
-        """Count commits in a range. Returns 0 on error."""
-        try:
-            return int(self.run("rev-list", "--count", range_spec))
-        except (GitError, ValueError):
-            return 0
-
-    def fetch(self, remote: str) -> bool:
-        """Fetch from a remote. Returns True on success."""
-        return self.run_ok("fetch", remote)
-
-    def is_clean(self) -> bool:
-        """Check if working tree is clean (no staged or unstaged changes)."""
-        return (
-            self.run_ok("diff", "--quiet", "HEAD")
-            and self.run_ok("diff", "--cached", "--quiet")
-        )
-
-    def ls_files_unmerged(self) -> List[str]:
-        """Return list of unmerged file paths (sorted, unique)."""
-        try:
-            output = self.run("ls-files", "--unmerged", check=False)
-            if not output:
-                return []
-            files = set()
-            for line in output.splitlines():
-                # format: mode hash stage\tfilename
-                parts = line.split("\t", 1)
-                if len(parts) == 2:
-                    files.add(parts[1])
-            return sorted(files)
-        except Exception:
-            return []
-
-    def diff_names(self, range_spec: str) -> List[str]:
-        """Return list of changed file names in a range."""
-        try:
-            output = self.run("diff", "--name-only", range_spec, check=False)
-            if not output:
-                return []
-            return sorted(set(output.splitlines()))
-        except Exception:
-            return []
-
-    def merge_base(self, ref1: str, ref2: str) -> Optional[str]:
-        """Find merge base of two refs. Returns None if not found."""
-        try:
-            return self.run("merge-base", ref1, ref2)
-        except GitError:
-            return None
-
-    def current_branch(self) -> str:
-        """Return name of current branch."""
-        try:
-            return self.run("branch", "--show-current")
-        except GitError:
-            return ""
-
-    def log_patches(self, base: str, branch: str) -> List[PatchInfo]:
-        """Parse patches from git log in a single pass.
-
-        Returns list of PatchInfo for commits in base..branch.
-        """
-        try:
-            output = self.run(
-                "log",
-                "--format=PATCH\t%h\t%s",
-                "--shortstat",
-                "--numstat",
-                "--reverse",
-                f"{base}..{branch}",
-            )
-        except GitError:
-            return []
-
-        patches: List[PatchInfo] = []
-        current: Optional[PatchInfo] = None
-
-        for line in output.splitlines():
-            if line.startswith("PATCH\t"):
-                if current is not None:
-                    patches.append(current)
-                parts = line.split("\t", 2)
-                hash_val = parts[1] if len(parts) > 1 else ""
-                subject = parts[2] if len(parts) > 2 else ""
-                name = ""
-                m = re.match(r"^\[bl\] ([^:]+):", subject)
-                if m:
-                    name = m.group(1)
-                current = PatchInfo(
-                    name=name, hash=hash_val, subject=subject, files=0, stat=""
-                )
-            elif current is not None:
-                # numstat line: add\tdel\tfile (binary shows -\t-\tfile)
-                if re.match(r"^(\d+|-)\t(\d+|-)\t", line):
-                    current.files += 1
-                    parts = line.split("\t", 2)
-                    if len(parts) >= 2:
-                        try:
-                            current.insertions += int(parts[0])
-                            current.deletions += int(parts[1])
-                        except ValueError:
-                            pass  # binary: -\t-\t — counted but no line stats
-                # shortstat line
-                elif re.match(r"^\s*\d+ file", line):
-                    current.stat = line.strip()
-
-        if current is not None:
-            patches.append(current)
-
-        return patches
-
-
-# ─── Config Class ─────────────────────────────────────────────────────────────
-
-
-class Config:
-    """Manages the .bingolight configuration file (git config format)."""
-
-    def __init__(self, repo_dir: str):
-        self.repo_dir = repo_dir
-        self.config_path = os.path.join(repo_dir, CONFIG_FILE)
-
-    def exists(self) -> bool:
-        """Check if config file exists."""
-        return os.path.isfile(self.config_path)
-
-    def load(self) -> dict:
-        """Load all bingo-light config values.
-
-        Returns:
-            dict with upstream_url, upstream_branch, patches_branch, tracking_branch
-
-        Raises:
-            NotInitializedError: if config file doesn't exist
-        """
-        if not self.exists():
-            raise NotInitializedError()
-
-        return {
-            "upstream_url": self.get("upstream-url") or "",
-            "upstream_branch": self.get("upstream-branch") or "main",
-            "patches_branch": self.get("patches-branch") or DEFAULT_PATCHES,
-            "tracking_branch": self.get("tracking-branch") or DEFAULT_TRACKING,
-        }
-
-    def save(
-        self,
-        url: str,
-        branch: str,
-        patches_branch: str = DEFAULT_PATCHES,
-        tracking_branch: str = DEFAULT_TRACKING,
-    ) -> None:
-        """Write config values."""
-        self.set("upstream-url", url)
-        self.set("upstream-branch", branch)
-        self.set("patches-branch", patches_branch)
-        self.set("tracking-branch", tracking_branch)
-
-    def get(self, key: str) -> Optional[str]:
-        """Get a config value. Returns None if not found."""
-        try:
-            result = subprocess.run(
-                ["git", "config", "--file", self.config_path, f"bingolight.{key}"],
-                cwd=self.repo_dir,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-            # Try without bingolight prefix
-            result = subprocess.run(
-                ["git", "config", "--file", self.config_path, key],
-                cwd=self.repo_dir,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-            return None
-        except Exception:
-            return None
-
-    def set(self, key: str, value: str) -> None:
-        """Set a config value."""
-        subprocess.run(
-            ["git", "config", "--file", self.config_path, f"bingolight.{key}", value],
-            cwd=self.repo_dir,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-    def list_all(self) -> dict:
-        """List all config values as a dict."""
-        try:
-            result = subprocess.run(
-                ["git", "config", "--file", self.config_path, "--list"],
-                cwd=self.repo_dir,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                return {}
-            items = {}
-            for line in result.stdout.strip().splitlines():
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    items[k] = v
-            return items
-        except Exception:
-            return {}
-
-
-# ─── State Class ──────────────────────────────────────────────────────────────
-
-
-class State:
-    """Manages .bingo/ directory state: undo, circuit breaker, metadata, etc."""
-
-    def __init__(self, repo_dir: str):
-        self.repo_dir = repo_dir
-        self.bingo_dir = os.path.join(repo_dir, BINGO_DIR)
-        self.metadata_file = os.path.join(self.bingo_dir, "metadata.json")
-        self.sync_history_file = os.path.join(self.bingo_dir, "sync-history.json")
-        self.session_file = os.path.join(self.bingo_dir, "session.md")
-
-    def _ensure_dir(self) -> None:
-        """Create .bingo/ directory if it doesn't exist."""
-        os.makedirs(self.bingo_dir, exist_ok=True)
-
-    def acquire_lock(self) -> None:
-        """Acquire an exclusive operation lock. Raises BingoError if locked."""
-        self._ensure_dir()
-        lock_path = os.path.join(self.bingo_dir, ".lock")
-        if os.path.isfile(lock_path):
-            try:
-                with open(lock_path) as f:
-                    pid = int(f.read().strip())
-                # Check if the locking process is still running
-                os.kill(pid, 0)
-                raise BingoError(
-                    f"Another bingo-light operation is in progress (pid {pid}). "
-                    "If this is stale, remove .bingo/.lock"
-                )
-            except (ValueError, OSError):
-                pass  # Stale lock — process is gone
-        with open(lock_path, "w") as f:
-            f.write(str(os.getpid()))
-
-    def release_lock(self) -> None:
-        """Release the operation lock."""
-        lock_path = os.path.join(self.bingo_dir, ".lock")
-        try:
-            os.unlink(lock_path)
-        except OSError:
-            pass
-
-    # ── Undo ──
-
-    def save_undo(self, head: str, tracking: str) -> None:
-        """Save undo state for rollback."""
-        self._ensure_dir()
-        self._write(os.path.join(self.bingo_dir, ".undo-head"), head)
-        self._write(os.path.join(self.bingo_dir, ".undo-tracking"), tracking)
-        # Clear undo marker — new sync starts a new cycle
-        self._remove(os.path.join(self.bingo_dir, ".undo-active"))
-
-    def load_undo(self) -> Tuple[Optional[str], Optional[str]]:
-        """Load saved undo state. Returns (head, tracking) or (None, None)."""
-        head = self._read(os.path.join(self.bingo_dir, ".undo-head"))
-        tracking = self._read(os.path.join(self.bingo_dir, ".undo-tracking"))
-        return head, tracking
-
-    def mark_undo_active(self) -> None:
-        """Mark that undo was used — prevents _fix_stale_tracking from auto-advancing."""
-        self._ensure_dir()
-        self._write(os.path.join(self.bingo_dir, ".undo-active"), "")
-
-    def is_undo_active(self) -> bool:
-        """Check if undo marker is set."""
-        return os.path.isfile(os.path.join(self.bingo_dir, ".undo-active"))
-
-    def clear_undo_tracking(self) -> None:
-        """Remove the undo tracking file after restoring."""
-        self._remove(os.path.join(self.bingo_dir, ".undo-tracking"))
-
-    # ── Circuit Breaker ──
-
-    def check_circuit_breaker(self, upstream_target: str) -> bool:
-        """Check if circuit breaker is tripped (3+ failures on same commit).
-
-        Returns True if we should STOP (breaker is tripped).
-        """
-        path = os.path.join(self.bingo_dir, ".sync-failures")
-        if not os.path.isfile(path):
-            return False
-        try:
-            content = self._read(path)
-            if content is None:
-                return False
-            lines = content.strip().split("\n")
-            if len(lines) < 2:
-                return False
-            target = lines[0]
-            count = int(lines[1])
-            return target == upstream_target and count >= CIRCUIT_BREAKER_LIMIT
-        except (ValueError, IndexError):
-            return False
-
-    def record_circuit_breaker(self, upstream_target: str) -> None:
-        """Record a sync failure for circuit breaker."""
-        self._ensure_dir()
-        path = os.path.join(self.bingo_dir, ".sync-failures")
-        prev_count = 0
-        if os.path.isfile(path):
-            try:
-                content = self._read(path)
-                if content:
-                    lines = content.strip().split("\n")
-                    if len(lines) >= 2 and lines[0] == upstream_target:
-                        prev_count = int(lines[1])
-            except (ValueError, IndexError):
-                pass
-        self._write(path, f"{upstream_target}\n{prev_count + 1}")
-
-    def clear_circuit_breaker(self) -> None:
-        """Reset circuit breaker on success."""
-        self._remove(os.path.join(self.bingo_dir, ".sync-failures"))
-
-    # ── Metadata ──
-
-    def _load_metadata(self) -> dict:
-        """Load metadata.json, creating it if needed."""
-        self._ensure_dir()
-        if not os.path.isfile(self.metadata_file):
-            return {"patches": {}}
-        try:
-            with open(self.metadata_file) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {"patches": {}}
-
-    def _save_metadata(self, data: dict) -> None:
-        """Atomically write metadata.json."""
-        self._ensure_dir()
-        self._write_json(self.metadata_file, data)
-
-    def patch_meta_get(self, patch_name: str) -> dict:
-        """Get metadata for a patch."""
-        data = self._load_metadata()
-        return data.get("patches", {}).get(
-            patch_name,
-            {
-                "reason": "",
-                "tags": [],
-                "expires": None,
-                "upstream_pr": "",
-                "status": "permanent",
-            },
-        )
-
-    def patch_meta_set(self, patch_name: str, key: str, value: str) -> None:
-        """Set a metadata field for a patch."""
-        data = self._load_metadata()
-        patches = data.setdefault("patches", {})
-        p = patches.setdefault(
-            patch_name,
-            {
-                "reason": "",
-                "tags": [],
-                "expires": None,
-                "upstream_pr": "",
-                "status": "permanent",
-                "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-        )
-        if key in ("tag", "tags"):
-            tags_list = p.setdefault("tags", [])
-            for t in (v.strip() for v in value.split(",")):
-                if t and t not in tags_list:
-                    tags_list.append(t)
-        elif key in ("reason", "expires", "upstream_pr", "status"):
-            p[key] = value
-        self._save_metadata(data)
-
-    # ── Sync History ──
-
-    def record_sync(
-        self,
-        behind: int,
-        upstream_before: str,
-        upstream_after: str,
-        patches: List[dict],
-    ) -> None:
-        """Record a sync event."""
-        self._ensure_dir()
-        data: dict = {"syncs": []}
-        if os.path.isfile(self.sync_history_file):
-            try:
-                with open(self.sync_history_file) as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                data = {"syncs": []}
-
-        data["syncs"].append(
-            {
-                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "upstream_before": upstream_before,
-                "upstream_after": upstream_after,
-                "upstream_commits_integrated": behind,
-                "patches": patches,
-            }
-        )
-        # Keep only the last N entries
-        data["syncs"] = data["syncs"][-SYNC_HISTORY_MAX:]
-        self._write_json(self.sync_history_file, data)
-
-    def get_sync_history(self) -> dict:
-        """Get sync history."""
-        if not os.path.isfile(self.sync_history_file):
-            return {"syncs": []}
-        try:
-            with open(self.sync_history_file) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {"syncs": []}
-
-    # ── Session ──
-
-    def update_session(self, content: str) -> None:
-        """Write session notes."""
-        self._ensure_dir()
-        self._write(self.session_file, content)
-
-    def get_session(self) -> Optional[str]:
-        """Read session notes."""
-        return self._read(self.session_file)
-
-    # ── Hooks ──
-
-    def run_hook(self, event: str, data: Optional[dict] = None) -> None:
-        """Run a hook script if it exists: .bingo/hooks/<event>."""
-        hook_path = os.path.join(self.bingo_dir, "hooks", event)
-        if os.path.isfile(hook_path) and os.access(hook_path, os.X_OK):
-            try:
-                json_data = json.dumps(data or {})
-                result = subprocess.run(
-                    [hook_path],
-                    cwd=self.repo_dir,
-                    input=json_data,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                if result.returncode != 0:
-                    import sys
-                    print(
-                        f"warning: hook '{event}' exited {result.returncode}",
-                        file=sys.stderr,
-                    )
-            except subprocess.TimeoutExpired:
-                import sys
-                print(f"warning: hook '{event}' timed out", file=sys.stderr)
-            except OSError:
-                pass  # Hook not executable or missing interpreter
-
-    # ── Internal helpers ──
-
-    def _write(self, path: str, content: str) -> None:
-        with open(path, "w") as f:
-            f.write(content)
-
-    def _read(self, path: str) -> Optional[str]:
-        if not os.path.isfile(path):
-            return None
-        try:
-            with open(path) as f:
-                return f.read().strip()
-        except IOError:
-            return None
-
-    def _remove(self, path: str) -> None:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-
-    def _write_json(self, path: str, data: dict) -> None:
-        """Atomically write JSON file using temp file + rename."""
-        dir_name = os.path.dirname(path) or "."
-        fd, tmp_path = tempfile.mkstemp(suffix=".tmp", dir=dir_name)
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_path, path)
-        except Exception:
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
-            raise
-
-
-# ─── Repo Class ───────────────────────────────────────────────────────────────
+from typing import List, Optional
+
+from bingo_core import (
+    PATCH_PREFIX,
+    CONFIG_FILE,
+    BINGO_DIR,
+    DEFAULT_TRACKING,
+    DEFAULT_PATCHES,
+    MAX_PATCHES,
+    MAX_DIFF_SIZE,
+    PATCH_NAME_RE,
+    PATCH_NAME_MAX,
+    MAX_RESOLVE_ITER,
+    RERERE_MAX_ITER,
+)
+from bingo_core.exceptions import (
+    BingoError,
+    GitError,
+    NotGitRepoError,
+    DirtyTreeError,
+)
+from bingo_core.models import ConflictInfo
+from bingo_core.git import Git
+from bingo_core.config import Config
+from bingo_core.state import State
 
 
 class Repo:
@@ -702,7 +47,7 @@ class Repo:
         self.config = Config(self.path)
         self.state = State(self.path)
 
-    # ── Internal helpers ──
+    # -- Internal helpers --
 
     def _ensure_git_repo(self) -> None:
         """Verify we're in a git repository."""
@@ -770,7 +115,7 @@ class Repo:
         # Count non-[bl] commits in tracking..patches
         # Only auto-fix if there are exactly the expected non-bl commits
         # (upstream commits that were merged manually after conflict resolution).
-        # If there are too many, something else is wrong — don't touch it.
+        # If there are too many, something else is wrong -- don't touch it.
         try:
             log_output = self.git.run(
                 "log",
@@ -985,7 +330,7 @@ class Repo:
         patches = self.git.log_patches(base, c["patches_branch"])
         return [{"name": p.name, "hash": p.hash} for p in patches]
 
-    # ── Init ──
+    # -- Init --
 
     def init(self, upstream_url: str, branch: str = "") -> dict:
         """Initialize bingo-light in a git repository.
@@ -1108,7 +453,7 @@ class Repo:
             result["reinit"] = True
         return result
 
-    # ── Status & Diagnostics ──
+    # -- Status & Diagnostics --
 
     def status(self) -> dict:
         """Get structured status of the fork.
@@ -1501,7 +846,7 @@ class Repo:
             ],
         }
 
-    # ── Sync ──
+    # -- Sync --
 
     def sync(
         self,
@@ -1645,7 +990,7 @@ class Repo:
                 try:
                     test_result = self.test()
                     if not test_result.get("ok"):
-                        # Undo the sync — restore both branches
+                        # Undo the sync -- restore both branches
                         try:
                             self.git.run(
                                 "branch", "-f", c["patches_branch"], saved_head
@@ -1657,7 +1002,7 @@ class Repo:
                                 c["tracking_branch"], saved_tracking,
                             )
                         except GitError:
-                            # Rollback failed — abort any in-progress rebase
+                            # Rollback failed -- abort any in-progress rebase
                             self.git.run_ok("rebase", "--abort")
                         self.state.run_hook(
                             "on-test-fail", {"behind_before": behind}
@@ -1669,7 +1014,7 @@ class Repo:
                             "auto_undone": True,
                         }
                 except BingoError as e:
-                    # Test command not configured or failed to run —
+                    # Test command not configured or failed to run --
                     # sync succeeded but test was skipped
                     return {
                         "ok": True,
@@ -1687,10 +1032,10 @@ class Repo:
                 "patches_rebased": patch_count,
             }
 
-        # Rebase failed — check if rerere auto-resolved
+        # Rebase failed -- check if rerere auto-resolved
         unresolved = self.git.ls_files_unmerged()
         if not unresolved:
-            # rerere resolved everything — try to continue
+            # rerere resolved everything -- try to continue
             rerere_ok = True
             rerere_iter = 0
             while self._in_rebase():
@@ -1882,12 +1227,12 @@ class Repo:
                 if cont_result.returncode == 0:
                     conflicts_resolved += 1
                     continue
-                # Continue failed — check for new conflicts
+                # Continue failed -- check for new conflicts
                 unresolved = self.git.ls_files_unmerged()
                 if not unresolved:
                     continue
 
-            # Real unresolved conflicts — report and stop
+            # Real unresolved conflicts -- report and stop
             self.git.run_ok("branch", "-f", c["tracking_branch"], saved_tracking)
 
             # Circuit breaker: increment failure count
@@ -1987,7 +1332,7 @@ class Repo:
 
         return {"ok": True, "restored_to": prev_head}
 
-    # ── Patches ──
+    # -- Patches --
 
     def patch_new(self, name: str, description: str = "") -> dict:
         """Create a new patch from current changes.
@@ -2017,7 +1362,7 @@ class Repo:
             except BingoError:
                 raise  # re-raise duplicate name errors
             except GitError:
-                pass  # git log failed (empty stack, etc.) — safe to continue
+                pass  # git log failed (empty stack, etc.) -- safe to continue
 
         # Ensure on patches branch
         if self.git.current_branch() != c["patches_branch"]:
@@ -2562,7 +1907,7 @@ class Repo:
         self.state.patch_meta_set(target, key, value)
         return {"ok": True, "patch": target, "set": key, "value": value}
 
-    # ── Config ──
+    # -- Config --
 
     def config_get(self, key: str) -> dict:
         """Get a config value.
@@ -2590,7 +1935,7 @@ class Repo:
         self._load()  # ensure initialized
         return {"ok": True, "config": self.config.list_all()}
 
-    # ── Other ──
+    # -- Other --
 
     def test(self) -> dict:
         """Run configured test command.
