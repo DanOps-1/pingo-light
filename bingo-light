@@ -264,7 +264,7 @@ def _format_auto_sync(result: dict) -> str:
 
 def _format_workspace(result: dict) -> str:
     """Format workspace result."""
-    # workspace list
+    # workspace list / status
     repos = result.get("repos", None)
     if repos is not None:
         if not repos:
@@ -273,7 +273,21 @@ def _format_workspace(result: dict) -> str:
         for r in repos:
             alias = r.get("alias", "?")
             path = r.get("path", "?")
-            lines.append(f"  {_c(CYAN, alias)}  {_c(DIM, path)}")
+            status = r.get("status", "")
+            behind = r.get("behind", None)
+            patches = r.get("patches", None)
+            line = f"  {_c(CYAN, alias)}  {_c(DIM, path)}"
+            if behind is not None:
+                if behind > 0:
+                    line += f"  {_c(YELLOW, f'{behind} behind')}"
+                else:
+                    line += f"  {_c(GREEN, 'up to date')}"
+                line += f"  {patches} patch(es)"
+            elif status == "missing":
+                line += f"  {_c(RED, 'missing')}"
+            elif status == "error":
+                line += f"  {_c(RED, r.get('error', 'error'))}"
+            lines.append(line)
         return "\n".join(lines)
     # workspace sync
     synced = result.get("synced", None)
@@ -302,8 +316,10 @@ def _format_init(result: dict) -> str:
     """Format init result."""
     upstream = result.get("upstream", "")
     branch = result.get("branch", "")
+    reinit = result.get("reinit", False)
+    label = "Re-initialized (config updated)." if reinit else "Fork tracking initialized."
     return (
-        f"{_c(GREEN, 'OK')} Fork tracking initialized.\n"
+        f"{_c(GREEN, 'OK')} {label}\n"
         f"  Upstream: {upstream}\n"
         f"  Branch: {branch}\n"
         f"  Tracking: {result.get('tracking', '')}\n"
@@ -340,6 +356,71 @@ def _format_patch_import(result: dict) -> str:
     """Format patch import result."""
     count = result.get("patch_count", 0)
     return f"{_c(GREEN, 'OK')} Import complete. {count} patch(es) in stack."
+
+
+def _format_smart_sync(result: dict) -> str:
+    """Format smart-sync result for human reading."""
+    if result.get("ok") is False:
+        action = result.get("action", "")
+        if action == "needs_human":
+            conflicts = result.get("remaining_conflicts", [])
+            auto = result.get("conflicts_auto_resolved", 0)
+            patch = result.get("current_patch", "")
+            lines = [f"{_c(RED, 'x')} Smart sync: unresolved conflict(s)."]
+            if patch:
+                lines.append(f"  Patch: {patch}")
+            if auto:
+                lines.append(f"  Auto-resolved: {auto} step(s) via rerere")
+            for c_ in conflicts:
+                f = c_.get("file", c_) if isinstance(c_, dict) else c_
+                lines.append(f"  {_c(YELLOW, '~')} {f}")
+            lines.append(
+                "\n  Resolve conflicts, then: git add <file> && "
+                "git rebase --continue"
+            )
+            lines.append("  Or abort: git rebase --abort")
+            return "\n".join(lines)
+        err = result.get("error", "Operation failed.")
+        return f"{_c(RED, 'x')} {err}"
+    action = result.get("action", "")
+    if action == "none":
+        return f"{_c(GREEN, 'OK')} Already up to date."
+    patches = result.get("patches_rebased", 0)
+    auto = result.get("conflicts_resolved", 0)
+    msg = f"{_c(GREEN, 'OK')} Sync complete! {patches} patch(es) rebased."
+    if auto:
+        msg += f" ({auto} conflict(s) auto-resolved via rerere)"
+    return msg
+
+
+def _format_patch_meta(result: dict) -> str:
+    """Format patch meta result for human reading."""
+    if result.get("ok") is False:
+        return f"{_c(RED, 'x')} {result.get('error', 'Failed.')}"
+    # Set operation — echo what was set
+    if "set" in result:
+        k = result["set"]
+        v = result["value"]
+        patch = result.get("patch", "")
+        return f"{_c(GREEN, 'OK')} {patch}: {k} = {v}"
+    # Get all metadata
+    meta = result.get("meta")
+    if meta is not None:
+        patch = result.get("patch", "")
+        lines = [f"{_c(BOLD, patch)}"]
+        for k, v in meta.items():
+            if k == "tags":
+                v = ", ".join(v) if v else "(none)"
+            elif v is None:
+                v = "(not set)"
+            elif v == "":
+                v = "(not set)"
+            lines.append(f"  {k}: {v}")
+        return "\n".join(lines)
+    # Get single key
+    k = result.get("key", "")
+    v = result.get("value", "")
+    return f"  {k}: {v}" if k else f"{_c(GREEN, 'OK')} Done."
 
 
 def _format_undo(result: dict) -> str:
@@ -737,8 +818,7 @@ def _dispatch_workspace(args: argparse.Namespace, repo: Repo) -> dict:
         return repo.workspace_sync()
 
     if wcmd == "status":
-        # workspace status falls back to workspace list
-        return repo.workspace_list()
+        return repo.workspace_status()
 
     raise BingoError(f"Unknown workspace subcommand: {wcmd}")
 
@@ -761,6 +841,7 @@ _FORMATTERS: Dict[str, Any] = {
     "test": _format_test,
     "auto-sync": _format_auto_sync,
     "undo": _format_undo,
+    "smart-sync": _format_smart_sync,
 }
 
 
@@ -783,6 +864,8 @@ def _get_formatter(args: argparse.Namespace):
             return _format_patch_export
         if pcmd == "import":
             return _format_patch_import
+        if pcmd == "meta":
+            return _format_patch_meta
         return _format_generic
 
     # workspace subcommands

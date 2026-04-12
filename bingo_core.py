@@ -999,8 +999,11 @@ class Repo:
         """
         self._ensure_git_repo()
 
+        # Detect re-init
+        reinit = bool(self.git.run_ok("remote", "get-url", "upstream"))
+
         # Add/update upstream remote
-        if self.git.run_ok("remote", "get-url", "upstream"):
+        if reinit:
             self.git.run("remote", "set-url", "upstream", upstream_url)
         else:
             self.git.run("remote", "add", "upstream", upstream_url)
@@ -1094,13 +1097,16 @@ class Repo:
         if current != patches_branch:
             self.git.run_ok("checkout", patches_branch)
 
-        return {
+        result = {
             "ok": True,
             "upstream": upstream_url,
             "branch": branch,
             "tracking": tracking_branch,
             "patches": patches_branch,
         }
+        if reinit:
+            result["reinit"] = True
+        return result
 
     # ── Status & Diagnostics ──
 
@@ -2807,6 +2813,34 @@ jobs:
 
         data = self._load_workspace(workspace_config)
         return {"ok": True, "repos": data.get("repos", [])}
+
+    def workspace_status(self) -> dict:
+        """List workspace repos with per-repo sync status."""
+        workspace_config = self._workspace_config_path()
+        if not os.path.isfile(workspace_config):
+            raise BingoError("No workspace. Run 'bingo-light workspace init'.")
+
+        data = self._load_workspace(workspace_config)
+        repos = []
+        for r in data.get("repos", []):
+            alias = r.get("alias", r.get("path", "unknown"))
+            path = r.get("path", "")
+            entry: dict = {"alias": alias, "path": path}
+            if not path or not os.path.isdir(path):
+                entry["status"] = "missing"
+                repos.append(entry)
+                continue
+            try:
+                sub = Repo(path)
+                st = sub.status()
+                entry["behind"] = st.get("behind", 0)
+                entry["patches"] = st.get("patch_count", 0)
+                entry["status"] = "ok" if st.get("up_to_date") else "behind"
+            except (BingoError, OSError) as e:
+                entry["status"] = "error"
+                entry["error"] = str(e)
+            repos.append(entry)
+        return {"ok": True, "repos": repos}
 
     def workspace_sync(self) -> dict:
         """Sync all workspace repos."""
