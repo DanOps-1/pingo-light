@@ -889,6 +889,128 @@ class Repo:
             ],
         }
 
+    def conflict_resolve(self, file_path: str, content: str = "") -> dict:
+        """Resolve a single conflicted file and continue rebase if possible.
+
+        Args:
+            file_path: Path to the conflicted file (relative to repo root)
+            content: If non-empty, write this content to the file before staging
+
+        Returns:
+            Result dict with resolved file, remaining conflicts, and rebase state
+        """
+        import pathlib
+
+        self._ensure_git_repo()
+
+        if not self._in_rebase():
+            raise BingoError("No rebase in progress. Nothing to resolve.")
+
+        if not file_path:
+            raise BingoError("No file specified. Usage: conflict-resolve <file>")
+
+        # Resolve and validate path doesn't escape repo root
+        repo_root = pathlib.Path(self.path).resolve()
+        resolved = (repo_root / file_path).resolve()
+        try:
+            resolved.relative_to(repo_root)
+        except ValueError:
+            raise BingoError(
+                f"Path escapes repository root: {file_path}"
+            )
+        rel_path = str(resolved.relative_to(repo_root))
+
+        # Verify file is actually in the unmerged list
+        unmerged = self.git.ls_files_unmerged()
+        if rel_path not in unmerged:
+            raise BingoError(
+                f"File is not in the unmerged list: {rel_path}\n"
+                f"Unmerged files: {', '.join(unmerged) if unmerged else '(none)'}"
+            )
+
+        # Write content if provided
+        if content:
+            full_path = str(resolved)
+            parent = os.path.dirname(full_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(full_path, "w") as f:
+                f.write(content)
+
+        # Stage the resolved file
+        if not self.git.run_ok("add", rel_path):
+            raise BingoError(f"Failed to stage file: {rel_path}")
+
+        # Check remaining unmerged files
+        remaining = self.git.ls_files_unmerged()
+        if remaining:
+            # Still have unresolved files in this patch
+            conflicts = [self._extract_conflict(f) for f in remaining]
+            return {
+                "ok": True,
+                "resolved": rel_path,
+                "remaining": remaining,
+                "conflicts": [c.to_dict() for c in conflicts],
+            }
+
+        # All files resolved for this patch -- try to continue rebase
+        env = os.environ.copy()
+        env["GIT_EDITOR"] = "true"
+        cont_result = subprocess.run(
+            ["git", "rebase", "--continue"],
+            cwd=self.path,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        if cont_result.returncode == 0:
+            # Rebase may have completed or moved to next patch
+            if self._in_rebase():
+                # Next patch is being applied, check for new conflicts
+                new_unmerged = self.git.ls_files_unmerged()
+                if new_unmerged:
+                    result = self._build_conflict_result(
+                        new_unmerged,
+                        resolved=rel_path,
+                        rebase_continued=True,
+                    )
+                    result["ok"] = True
+                    return result
+                # No conflicts on next patch -- it applied cleanly
+                # but rebase still in progress (more patches to go)
+                return {
+                    "ok": True,
+                    "resolved": rel_path,
+                    "rebase_continued": True,
+                    "sync_complete": False,
+                }
+            # Rebase fully complete
+            return {
+                "ok": True,
+                "resolved": rel_path,
+                "rebase_continued": True,
+                "sync_complete": True,
+            }
+
+        # rebase --continue failed -- check why
+        new_unmerged = self.git.ls_files_unmerged()
+        if new_unmerged:
+            # Next patch triggered new conflicts
+            result = self._build_conflict_result(
+                new_unmerged,
+                resolved=rel_path,
+                rebase_continued=True,
+            )
+            result["ok"] = True
+            return result
+
+        # Failed for some other reason
+        stderr = cont_result.stderr.strip()
+        raise BingoError(
+            f"git rebase --continue failed: {stderr or '(unknown error)'}"
+        )
+
     # -- Sync --
 
     def sync(

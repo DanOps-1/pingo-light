@@ -219,6 +219,54 @@ def _format_conflict_analyze(result: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_conflict_resolve(result: dict) -> str:
+    """Format conflict-resolve result for human reading."""
+    if result.get("ok") is False:
+        return f"{_c(RED, 'x')} {result.get('error', 'Resolution failed.')}"
+
+    resolved = result.get("resolved", "?")
+    remaining = result.get("remaining", [])
+
+    if remaining:
+        n = len(remaining)
+        files = ", ".join(remaining)
+        return (
+            f"{_c(GREEN, 'OK')} Resolved {resolved}. "
+            f"{n} file(s) still in conflict: {files}"
+        )
+
+    if result.get("sync_complete"):
+        return (
+            f"{_c(GREEN, 'OK')} Resolved {resolved} "
+            f"\u2014 sync complete!"
+        )
+
+    if result.get("conflict"):
+        patch = result.get("current_patch", "")
+        conflicts = result.get("conflicts", [])
+        lines = [
+            f"{_c(GREEN, 'OK')} Resolved {resolved} "
+            f"\u2014 next patch has conflicts:"
+        ]
+        if patch:
+            lines.append(f"  Patch: {patch}")
+        for c in conflicts:
+            f = c.get("file", "?")
+            hint = c.get("merge_hint", "")
+            lines.append(f"  {_c(YELLOW, '~')} {f}")
+            if hint:
+                lines.append(f"    hint: {hint}")
+        return "\n".join(lines)
+
+    if result.get("rebase_continued"):
+        return (
+            f"{_c(GREEN, 'OK')} Resolved {resolved} "
+            f"\u2014 rebase continued."
+        )
+
+    return f"{_c(GREEN, 'OK')} Resolved {resolved}."
+
+
 def _format_session(result: dict) -> str:
     """Format session output."""
     content = result.get("content", result.get("session", ""))
@@ -491,6 +539,7 @@ def show_help() -> str:
     {cy}diff{r}                            Show all changes vs upstream
     {cy}log{r}                             Show sync history
     {cy}conflict-analyze{r}                Analyze rebase conflicts (structured output)
+    {cy}conflict-resolve{r} <file>         Resolve a conflict file and continue
     {cy}history{r}                         Detailed sync history with hash mappings
     {cy}session{r} [update]                 AI session notes (.bingo/session.md)
 
@@ -592,6 +641,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # conflict-analyze
     sub.add_parser("conflict-analyze", add_help=False)
+
+    # conflict-resolve
+    cr = sub.add_parser("conflict-resolve", add_help=False)
+    cr.add_argument("resolve_file", nargs="?", default="")
+    cr.add_argument("--content-stdin", action="store_true")
 
     # session
     p_session = sub.add_parser("session", add_help=False)
@@ -709,6 +763,13 @@ def dispatch(args: argparse.Namespace, json_mode: bool) -> Optional[dict]:
 
     if cmd == "conflict-analyze":
         return repo.conflict_analyze()
+
+    if cmd == "conflict-resolve":
+        content = ""
+        if args.content_stdin:
+            import sys as _sys
+            content = _sys.stdin.read()
+        return repo.conflict_resolve(args.resolve_file, content)
 
     if cmd == "session":
         update = (args.session_action == "update")
@@ -837,6 +898,7 @@ _FORMATTERS: Dict[str, Any] = {
     "log": _format_history,
     "history": _format_history,
     "conflict-analyze": _format_conflict_analyze,
+    "conflict-resolve": _format_conflict_resolve,
     "session": _format_session,
     "test": _format_test,
     "auto-sync": _format_auto_sync,
