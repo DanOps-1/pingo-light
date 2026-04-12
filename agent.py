@@ -161,11 +161,15 @@ def analyze_conflict_details(cwd: str) -> list[dict]:
     """When in a rebase conflict, extract structured conflict info."""
     conflicts = []
     try:
-        conflicted = run_git(["diff", "--name-only", "--diff-filter=U"], cwd)
+        unmerged = run_git(["ls-files", "--unmerged"], cwd)
+        # Extract unique file paths (ls-files --unmerged output: mode hash stage\tpath)
+        conflicted_files = sorted(set(
+            line.split("\t")[-1] for line in unmerged.strip().splitlines() if "\t" in line
+        ))
     except RuntimeError:
         return conflicts
 
-    for file_path in conflicted.strip().split("\n"):
+    for file_path in conflicted_files:
         file_path = file_path.strip()
         if not file_path:
             continue

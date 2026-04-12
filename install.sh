@@ -10,7 +10,7 @@ if [[ -f "$(dirname "$0")/bingo-light" ]] 2>/dev/null; then
 else
     # Running via curl pipe — download to temp dir
     SCRIPT_DIR="$(mktemp -d)"
-    trap 'rm -rf "$SCRIPT_DIR"' EXIT
+    _CLEANUP_DIR="$SCRIPT_DIR"
     curl -fsSL "$GITHUB_RAW/bingo-light" -o "$SCRIPT_DIR/bingo-light"
     curl -fsSL "$GITHUB_RAW/mcp-server.py" -o "$SCRIPT_DIR/mcp-server.py"
     curl -fsSL "$GITHUB_RAW/.claude/commands/bingo.md" -o "$SCRIPT_DIR/bingo.md"
@@ -41,7 +41,7 @@ C_BOLD="${ESC}[1m"
 C_RESET="${ESC}[0m"
 C_WHITE="${ESC}[38;5;255m"
 
-trap 'printf "%s" "$SHOW_CURSOR"' EXIT
+trap 'printf "%s" "$SHOW_CURSOR"; [[ -n "${_CLEANUP_DIR:-}" ]] && rm -rf "$_CLEANUP_DIR"' EXIT
 printf "%s" "$HIDE_CURSOR"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ center() {
     local cols
     cols=$(tput cols 2>/dev/null || echo 80)
     local stripped
-    stripped=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    stripped=$(printf '%s' "$text" | sed $'s/\033\\[[0-9;]*m//g')
     local pad=$(( (cols - ${#stripped}) / 2 ))
     [[ "$pad" -lt 0 ]] && pad=0
     printf "%${pad}s${color}%s${C_RESET}\n" "" "$text"
@@ -258,13 +258,14 @@ step_mcp() {
         if ask_styled "Configure for Claude Code? [Y/n]"; then
             local cfg="$HOME/.claude/settings.json"
             mkdir -p "$HOME/.claude"
-            python3 -c "
-import json, os
-path = '$cfg'
+            printf '%s\n%s' "$cfg" "$SCRIPT_DIR/mcp-server.py" | python3 -c "
+import json, os, sys
+lines = sys.stdin.read().strip().split('\n')
+path, mcp_path = lines[0], lines[1]
 data = {}
 if os.path.exists(path):
     with open(path) as f: data = json.load(f)
-data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}
+data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': [mcp_path]}
 with open(path, 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null && ok "Claude Code configured" || fail "Could not write settings"
             configured=true
@@ -278,13 +279,14 @@ with open(path, 'w') as f: json.dump(data, f, indent=2)
     if [[ -d "$HOME/Library/Application Support/Claude" ]]; then
         echo ""
         if ask_styled "Configure for Claude Desktop? [Y/n]"; then
-            python3 -c "
-import json, os
-path = '''$desktop_cfg'''
+            printf '%s\n%s' "$desktop_cfg" "$SCRIPT_DIR/mcp-server.py" | python3 -c "
+import json, os, sys
+lines = sys.stdin.read().strip().split('\n')
+path, mcp_path = lines[0], lines[1]
 data = {}
 if os.path.exists(path):
     with open(path) as f: data = json.load(f)
-data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': ['$SCRIPT_DIR/mcp-server.py']}
+data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': [mcp_path]}
 with open(path, 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null && ok "Claude Desktop configured" || fail "Could not write config"
             configured=true

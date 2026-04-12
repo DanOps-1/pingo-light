@@ -148,19 +148,19 @@ patches_base() {
 _fix_stale_tracking() {
     [[ -d .git/rebase-merge || -d .git/rebase-apply ]] && return  # don't touch during active rebase
     [[ -f .bingo/.undo-active ]] && return  # don't auto-fix after undo (user intentionally rolled back)
-    local tracking_pos patches_base_pos upstream_pos
+    local tracking_pos upstream_pos
     tracking_pos=$(git rev-parse "$TRACKING_BRANCH" 2>/dev/null) || return
     upstream_pos=$(git rev-parse "upstream/$UPSTREAM_BRANCH" 2>/dev/null) || return
-    patches_base_pos=$(git merge-base "$TRACKING_BRANCH" "$PATCHES_BRANCH" 2>/dev/null) || return
-    # If tracking is behind upstream AND patches are already rebased past tracking
-    # (i.e., patches_base is at or ahead of upstream), then tracking needs to catch up
-    if [[ "$tracking_pos" != "$upstream_pos" ]] && git merge-base --is-ancestor "$tracking_pos" "$patches_base_pos" 2>/dev/null; then
-        # Patches are based on a commit that is descendant of tracking — tracking is stale
-        # Check if patches_base is actually on the upstream line
-        if git merge-base --is-ancestor "$tracking_pos" "$patches_base_pos" 2>/dev/null && \
-           git merge-base --is-ancestor "$patches_base_pos" "$upstream_pos" 2>/dev/null; then
-            git branch -f "$TRACKING_BRANCH" "$upstream_pos" &>/dev/null
-        fi
+    [[ "$tracking_pos" == "$upstream_pos" ]] && return  # already in sync
+
+    # Check if patches have been rebased past tracking (upstream commits exist between tracking and patches).
+    # This detects: user manually completed a rebase after sync conflict, or used git rebase directly.
+    # Count non-[bl] commits in tracking..patches — these are upstream commits that got included.
+    local non_bl_count
+    non_bl_count=$(git log --format="%s" "$TRACKING_BRANCH..$PATCHES_BRANCH" 2>/dev/null | grep -cv "^\[bl\] " || true)
+    if [[ "$non_bl_count" -gt 0 ]]; then
+        # Patches contain upstream commits past tracking — tracking is stale, advance it
+        git branch -f "$TRACKING_BRANCH" "$upstream_pos" &>/dev/null
     fi
 }
 
@@ -220,7 +220,7 @@ cmd_init() {
     # 3. Auto-detect upstream branch if not specified
     if [[ -z "$upstream_branch" ]]; then
         # Try to detect the default branch
-        upstream_branch=$(git remote show upstream 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+        upstream_branch=$(git remote show upstream 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || true)
         if [[ -z "$upstream_branch" || "$upstream_branch" == "(unknown)" ]]; then
             # Fallback: check for common branch names
             for candidate in main master develop; do
@@ -949,6 +949,7 @@ resolve_patch() {
 
 cmd_sync() {
     load_config
+    _fix_stale_tracking
 
     local dry_run=false
     local force=false
@@ -1212,6 +1213,7 @@ cmd_sync() {
 
 cmd_smart_sync() {
     load_config
+    _fix_stale_tracking
     ensure_clean_tree
 
     # Circuit breaker: if last 3 syncs failed on the same upstream commit, stop trying
@@ -1465,10 +1467,11 @@ cmd_status() {
 
     # rerere stats
     local rerere_count
-    rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+    rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ' || true)
     if [[ "$rerere_count" -gt 0 ]]; then
         dim "  rerere: $rerere_count recorded resolution(s) (conflicts auto-resolved on repeat)"
     fi
+    return 0
 }
 
 # ─── Command: doctor ──────────────────────────────────────────────────────────
@@ -1755,7 +1758,7 @@ cmd_undo() {
     if [[ -f .bingo/.undo-head ]]; then
         prev_head=$(cat .bingo/.undo-head)
     else
-        prev_head=$(git reflog "$PATCHES_BRANCH" --format="%H" -2 2>/dev/null | tail -1)
+        prev_head=$(git reflog "$PATCHES_BRANCH" --format="%H" -2 2>/dev/null | tail -1 || true)
     fi
 
     if [[ -z "$prev_head" ]]; then
@@ -1994,9 +1997,15 @@ END { if (n>0) printf "%s\t%s\t%s\t%d\n", name, hash, subj, files }
     local in_rebase=false
     [[ -d .git/rebase-merge || -d .git/rebase-apply ]] && in_rebase=true
 
+    # Detect stale patches: tracking has advanced but patches haven't been rebased
+    local patches_stale=false
+    if [[ -n "$base" && -n "$tracking_head" && "$base" != "$tracking_head" ]]; then
+        patches_stale=true
+    fi
+
     # Build JSON safely with Python (handles all escaping correctly)
     printf '%s\n---PATCHES---\n%s---OVERLAP---\n%s' \
-        "$UPSTREAM_URL"$'\t'"$UPSTREAM_BRANCH"$'\t'"$(current_branch)"$'\t'"$behind"$'\t'"$patch_count"$'\t'"$in_rebase" \
+        "$UPSTREAM_URL"$'\t'"$UPSTREAM_BRANCH"$'\t'"$(current_branch)"$'\t'"$behind"$'\t'"$patch_count"$'\t'"$in_rebase"$'\t'"$patches_stale" \
         "$patch_data" \
         "$overlap" | python3 -c "
 import json, sys
@@ -2007,7 +2016,8 @@ rest = parts[1].split('---OVERLAP---\n')
 patch_lines = rest[0].strip()
 overlap_text = rest[1].strip() if len(rest) > 1 else ''
 
-url, branch, cur_branch, behind, pcount, in_rebase = header
+url, branch, cur_branch, behind, pcount, in_rebase = header[:6]
+patches_stale = header[6] if len(header) > 6 else 'false'
 behind, pcount = int(behind), int(pcount)
 
 patches = []
@@ -2020,13 +2030,17 @@ for line in patch_lines.split('\n'):
 overlap = [f for f in overlap_text.split('\n') if f.strip()]
 
 in_reb = in_rebase == 'true'
+stale = patches_stale == 'true'
 risk = len(overlap) > 0
-up2date = behind == 0
+up2date = behind == 0 and not stale
 
 # Compute recommended action for AI decision-making
 if in_reb:
     action = 'resolve_conflict'
     reason = 'Rebase in progress. Run conflict-analyze to see conflicts, resolve them, then git add + git rebase --continue.'
+elif stale and behind == 0:
+    action = 'sync_safe'
+    reason = 'Patches are on an older base than tracking branch. Run sync to rebase patches onto current upstream.'
 elif up2date:
     action = 'up_to_date'
     reason = 'Fork is in sync with upstream. No action needed.'
@@ -2151,9 +2165,9 @@ cmd_patch_meta() {
             --set-tag|tag)                    action="tag"; value="${2:-}"; shift 2 ;;
             --set-expires|expires)            action="expires"; value="${2:-}"; shift 2 ;;
             --set-upstream-pr|upstream_pr|upstream-pr) action="upstream_pr"; value="${2:-}"; shift 2 ;;
-            --set-status)                     action="status"; value="${2:-}"; shift 2 ;;
-            --json) shift ;;
-            *) shift ;;
+            --set-status|status)              action="status"; value="${2:-}"; shift 2 ;;
+            --json|--yes) shift ;;
+            *) fatal "patch meta: unknown key '$1'. Valid keys: reason, tag, expires, upstream_pr, status" ;;
         esac
     done
 
@@ -2278,7 +2292,7 @@ patch_reorder_noninteractive() {
     local patch_total
     patch_total=$(git rev-list --count "$base..$PATCHES_BRANCH" 2>/dev/null || echo 0)
     local index_count
-    index_count=$(echo "$order_str" | tr ',' '\n' | grep -c '[0-9]')
+    index_count=$(echo "$order_str" | tr ',' '\n' | grep -c '[0-9]' || echo 0)
     if [[ "$index_count" -ne "$patch_total" ]]; then
         fatal "Reorder requires exactly $patch_total indices (one per patch), got $index_count."
     fi
@@ -2639,7 +2653,7 @@ cmd_session() {
 
         local last_sync_info=""
         local last_sync_entry
-        last_sync_entry=$(git reflog show "$PATCHES_BRANCH" --format="%gd %gs %cr" 2>/dev/null | grep -i "rebase\|reset" | head -1)
+        last_sync_entry=$(git reflog show "$PATCHES_BRANCH" --format="%gd %gs %cr" 2>/dev/null | grep -i "rebase\|reset" | head -1 || true)
         if [[ -n "$last_sync_entry" ]]; then
             last_sync_info="$last_sync_entry"
         else
@@ -2649,7 +2663,7 @@ cmd_session() {
         fi
 
         local rerere_count=0
-        rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        rerere_count=$(find .git/rr-cache -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ' || true)
 
         mkdir -p .bingo
         cat > "$session_file" << SESSIONEOF
