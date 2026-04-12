@@ -86,11 +86,11 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 ## When adding a new command
 
 1. `bingo_core/repo.py` — add method to `Repo` class, return dict with `ok` key
-2. `bingo-light` — add argparse + dispatch + formatter
-3. `completions/*.bash`, `.zsh`, `.fish` — add to completion list
-5. `llms.txt` — add to command reference
-6. `README.md` + `README.zh-CN.md` — add to Command Reference
-7. Tests — add to `test.sh` or `test_core.py`
+2. `bingo-light` — add argparse + dispatch + **dedicated formatter** (not `_format_generic`)
+3. `completions/*.bash`, `.zsh`, `.fish` — add to ALL three completion files
+4. `llms.txt` — add to command reference
+5. `README.md` + `README.zh-CN.md` — add to Command Reference
+6. Tests — add to `test.sh` or `test_core.py`
 
 ## When adding a new MCP tool
 
