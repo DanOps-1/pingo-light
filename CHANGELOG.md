@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.1] - 2026-04-13
+
+### Fixed
+- PyPI/npm 2.1.0 packages shipped stale `bingo-light` script without `setup` command
+- Release workflow now verifies built packages actually work before publishing
+
 ## [2.1.0] - 2026-04-13
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "bingo-light",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "AI-native fork maintenance — manage customizations as a clean patch stack on top of upstream",
   "keywords": ["git", "fork", "patch", "mcp", "ai", "maintenance", "upstream", "rebase"],
   "homepage": "https://github.com/DanOps-1/bingo-light",
