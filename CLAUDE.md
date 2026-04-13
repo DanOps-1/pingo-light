@@ -59,12 +59,12 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 - Patch ID: commit messages matching `[bl] <name>: <desc>`
 - Patch names: validated to `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`
 - Branches: `upstream-tracking` (mirror), `bingo-patches` (patches on top)
-- MCP server version must match CLI VERSION (currently 2.0.0)
+- MCP server version must match CLI VERSION (currently 2.1.0)
 - `_fix_stale_tracking()`: auto-repairs tracking branch after manual conflict resolution, skipped if `.bingo/.undo-active` exists or rebase is in progress
 
 ## Sync points — data that lives in multiple files
 
-**VERSION** (currently 2.0.0) — change ALL of these together:
+**VERSION** (currently 2.1.0) — change ALL of these together:
 - `bingo_core/__init__.py` — source of truth
 
 - `mcp-server.py` — `"version"` in initialize response
