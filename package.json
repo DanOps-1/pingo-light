@@ -1,0 +1,38 @@
+{
+  "name": "bingo-light",
+  "version": "2.0.1",
+  "description": "AI-native fork maintenance — manage customizations as a clean patch stack on top of upstream",
+  "keywords": ["git", "fork", "patch", "mcp", "ai", "maintenance", "upstream", "rebase"],
+  "homepage": "https://github.com/DanOps-1/bingo-light",
+  "bugs": "https://github.com/DanOps-1/bingo-light/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DanOps-1/bingo-light.git"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  },
+  "bin": {
+    "bingo-light": "./bin/cli.js",
+    "bingo-light-mcp": "./bin/mcp.js"
+  },
+  "files": [
+    "bin/",
+    "bingo-light",
+    "mcp-server.py",
+    "bingo_core/*.py",
+    "completions/",
+    ".claude/commands/bingo.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "os": ["darwin", "linux", "win32"],
+  "systemDependencies": {
+    "python": ">=3.8",
+    "git": ">=2.20"
+  }
+}

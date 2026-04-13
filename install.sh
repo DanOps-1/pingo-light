@@ -1,425 +1,402 @@
-#!/usr/bin/env bash
-# bingo-light — interactive setup wizard
-set -euo pipefail
+#!/bin/sh
+# bingo-light installer
+# https://github.com/DanOps-1/bingo-light
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | sh
+#   curl -fsSL ... | sh -s -- --yes --bin-dir ~/.local/bin
+#   ./install.sh [OPTIONS]
+#
+# Options:
+#   -h, --help            Show usage
+#   -y, --yes             Skip confirmation prompts
+#       --bin-dir DIR     Install directory (default: /usr/local/bin)
+#       --version REF     Git ref to install (default: main)
+#       --no-completions  Skip shell completions
+#       --no-mcp          Skip MCP / AI tool configuration
 
-GITHUB_RAW="https://raw.githubusercontent.com/DanOps-1/bingo-light/main"
+{ # Ensure entire script is downloaded before execution when piped
 
-# Detect if running from a local clone or piped from curl
-if [[ -f "$(dirname "$0")/bingo-light" ]] 2>/dev/null; then
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+set -eu
+
+# ─── Defaults ────────────────────────────────────────────────────────────────
+
+GITHUB_RAW="https://raw.githubusercontent.com/DanOps-1/bingo-light"
+VERSION="main"
+BIN_DIR="/usr/local/bin"
+OPT_YES=false
+OPT_NO_MCP=false
+OPT_NO_COMPLETIONS=false
+_TMPDIR=""
+
+# ─── Usage ───────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<'EOF'
+bingo-light installer — AI-native fork maintenance
+
+USAGE
+    curl -fsSL .../install.sh | sh
+    curl -fsSL .../install.sh | sh -s -- [OPTIONS]
+    ./install.sh [OPTIONS]
+
+OPTIONS
+    -h, --help            Show this help
+    -y, --yes             Skip all confirmation prompts
+        --bin-dir DIR     Install directory (default: /usr/local/bin)
+        --version REF     Git ref to install (default: main)
+        --no-completions  Skip shell completion setup
+        --no-mcp          Skip MCP / AI tool configuration
+
+ENVIRONMENT
+    NONINTERACTIVE=1      Same as --yes
+    BIN_DIR=DIR           Same as --bin-dir
+EOF
+    exit 0
+}
+
+# ─── Argument parsing ────────────────────────────────────────────────────────
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)        usage ;;
+        -y|--yes)         OPT_YES=true ;;
+        --bin-dir)        shift; BIN_DIR="${1:?--bin-dir requires a value}" ;;
+        --bin-dir=*)      BIN_DIR="${1#*=}" ;;
+        --version)        shift; VERSION="${1:?--version requires a value}" ;;
+        --version=*)      VERSION="${1#*=}" ;;
+        --no-completions) OPT_NO_COMPLETIONS=true ;;
+        --no-mcp)         OPT_NO_MCP=true ;;
+        *)  printf 'error: unknown option: %s\n' "$1" >&2
+            printf 'Run with --help for usage.\n' >&2
+            exit 1 ;;
+    esac
+    shift
+done
+
+[ "${NONINTERACTIVE:-0}" = "1" ] && OPT_YES=true
+[ "${CI:-}" = "true" ] && OPT_YES=true
+
+# ─── Colors (TTY-aware) ─────────────────────────────────────────────────────
+
+if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
+    BOLD=$(printf '\033[1m')    RED=$(printf '\033[31m')
+    GREEN=$(printf '\033[32m')  YELLOW=$(printf '\033[33m')
+    BLUE=$(printf '\033[34m')   DIM=$(printf '\033[2m')
+    RESET=$(printf '\033[0m')
 else
-    # Running via curl pipe — download to temp dir
-    SCRIPT_DIR="$(mktemp -d)"
-    _CLEANUP_DIR="$SCRIPT_DIR"
-    _download() {
-        if ! curl -fsSL "$1" -o "$2"; then
-            echo "Error: failed to download $1" >&2
-            exit 1
-        fi
-    }
-    _download "$GITHUB_RAW/bingo-light" "$SCRIPT_DIR/bingo-light"
-    mkdir -p "$SCRIPT_DIR/bingo_core"
-    _download "$GITHUB_RAW/bingo_core/__init__.py" "$SCRIPT_DIR/bingo_core/__init__.py"
-    _download "$GITHUB_RAW/bingo_core/exceptions.py" "$SCRIPT_DIR/bingo_core/exceptions.py"
-    _download "$GITHUB_RAW/bingo_core/models.py" "$SCRIPT_DIR/bingo_core/models.py"
-    _download "$GITHUB_RAW/bingo_core/git.py" "$SCRIPT_DIR/bingo_core/git.py"
-    _download "$GITHUB_RAW/bingo_core/config.py" "$SCRIPT_DIR/bingo_core/config.py"
-    _download "$GITHUB_RAW/bingo_core/state.py" "$SCRIPT_DIR/bingo_core/state.py"
-    _download "$GITHUB_RAW/bingo_core/repo.py" "$SCRIPT_DIR/bingo_core/repo.py"
-    _download "$GITHUB_RAW/mcp-server.py" "$SCRIPT_DIR/mcp-server.py"
-    _download "$GITHUB_RAW/.claude/commands/bingo.md" "$SCRIPT_DIR/bingo.md"
-    mkdir -p "$SCRIPT_DIR/completions"
-    _download "$GITHUB_RAW/completions/bingo-light.bash" "$SCRIPT_DIR/completions/bingo-light.bash"
-    _download "$GITHUB_RAW/completions/bingo-light.zsh" "$SCRIPT_DIR/completions/bingo-light.zsh"
-    _download "$GITHUB_RAW/completions/bingo-light.fish" "$SCRIPT_DIR/completions/bingo-light.fish"
+    BOLD="" RED="" GREEN="" YELLOW="" BLUE="" DIM="" RESET=""
 fi
 
-# ─── Terminal Control ─────────────────────────────────────────────────────────
+# ─── Message functions ───────────────────────────────────────────────────────
 
-ESC=$'\033'
-HIDE_CURSOR="${ESC}[?25l"
-SHOW_CURSOR="${ESC}[?25h"
-CLEAR_LINE="${ESC}[2K"
-MOVE_UP="${ESC}[1A"
-SAVE_POS="${ESC}[s"
-RESTORE_POS="${ESC}[u"
+info()    { printf '  %s>%s %s\n' "$BLUE" "$RESET" "$*"; }
+warn()    { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+error()   { printf '  %sx%s %s\n' "$RED" "$RESET" "$*" >&2; }
+ok()      { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
+skip()    { printf '  %s⊘ %s%s\n' "$DIM" "$*" "$RESET"; }
 
-# Colors (soft palette)
-C_BG="${ESC}[48;5;235m"
-C_FG="${ESC}[38;5;252m"
-C_ACCENT="${ESC}[38;5;75m"    # soft blue
-C_SUCCESS="${ESC}[38;5;114m"  # soft green
-C_WARN="${ESC}[38;5;221m"     # soft yellow
-C_DIM="${ESC}[38;5;242m"
-C_BOLD="${ESC}[1m"
-C_RESET="${ESC}[0m"
-C_WHITE="${ESC}[38;5;255m"
-
-trap 'printf "%s" "$SHOW_CURSOR"; [[ -n "${_CLEANUP_DIR:-}" ]] && rm -rf "$_CLEANUP_DIR"' EXIT
-printf "%s" "$HIDE_CURSOR"
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-clear_screen() { printf "${ESC}[2J${ESC}[H"; }
-
-# Print centered text
-center() {
-    local text="$1" color="${2:-$C_FG}"
-    local cols
-    cols=$(tput cols 2>/dev/null || echo 80)
-    local stripped
-    stripped=$(printf '%s' "$text" | sed $'s/\033\\[[0-9;]*m//g')
-    local pad=$(( (cols - ${#stripped}) / 2 ))
-    [[ "$pad" -lt 0 ]] && pad=0
-    printf "%${pad}s${color}%s${C_RESET}\n" "" "$text"
+header() {
+    printf '\n  %s%s%s\n' "$BOLD" "$*" "$RESET"
+    printf '  %s' "$DIM"
+    printf '%s' "$*" | sed 's/./-/g'
+    printf '%s\n\n' "$RESET"
 }
 
-# Animated typing effect
-type_text() {
-    local text="$1" color="${2:-$C_FG}" delay="${3:-0.02}"
-    printf "%s" "$color"
-    for ((i=0; i<${#text}; i++)); do
-        printf "%s" "${text:$i:1}"
-        sleep "$delay"
-    done
-    printf "%s\n" "$C_RESET"
+# ─── Utilities ───────────────────────────────────────────────────────────────
+
+has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+tildify() {
+    case "$1" in
+        "$HOME"/*) printf '~/%s' "${1#$HOME/}" ;;
+        "$HOME")   printf '~' ;;
+        *)         printf '%s' "$1" ;;
+    esac
 }
 
-# Spinner animation
-spin() {
-    local pid=$1 msg="${2:-Working...}"
-    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
-    local i=0
-    while kill -0 "$pid" 2>/dev/null; do
-        printf "\r  ${C_ACCENT}${frames[$i]}${C_RESET} ${C_DIM}%s${C_RESET}" "$msg"
-        i=$(( (i + 1) % ${#frames[@]} ))
-        sleep 0.08
-    done
-    wait "$pid" 2>/dev/null
-    local code=$?
-    printf "\r${CLEAR_LINE}"
-    return $code
+confirm() {
+    if [ "$OPT_YES" = true ]; then return 0; fi
+    if ! [ -t 0 ] && ! [ -t 1 ]; then return 0; fi
+    printf '  %s?%s %s [Y/n] ' "$BOLD" "$RESET" "$1"
+    read -r yn </dev/tty 2>/dev/null || yn="y"
+    case "$yn" in
+        ""|[yY]|[yY][eE][sS]) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
-# Step indicator: ● ● ○ ○
-progress_dots() {
-    local current=$1 total=$2
-    local dots=""
-    for ((i=1; i<=total; i++)); do
-        if [[ $i -le $current ]]; then
-            dots+="${C_ACCENT}●${C_RESET} "
-        else
-            dots+="${C_DIM}○${C_RESET} "
-        fi
-    done
-    center "$dots"
-}
-
-# Ask with styled prompt
-ask_styled() {
-    local prompt="$1" default="${2:-y}"
-    printf "\n  ${C_WHITE}%s${C_RESET} " "$prompt"
-    printf "%s" "$SHOW_CURSOR"
-    read -r answer
-    printf "%s" "$HIDE_CURSOR"
-    answer="${answer:-$default}"
-    [[ "$answer" =~ ^[Yy] ]]
-}
-
-# Result line
-ok()   { printf "  ${C_SUCCESS}✓${C_RESET} %s\n" "$1"; }
-skip() { printf "  ${C_DIM}⊘ %s${C_RESET}\n" "$1"; }
-fail() { printf "  ${C_WARN}✗${C_RESET} %s\n" "$1"; }
-
-# Box drawing
-box_top()    { printf "  ${C_DIM}╭─────────────────────────────────────────────────╮${C_RESET}\n"; }
-box_bottom() { printf "  ${C_DIM}╰─────────────────────────────────────────────────╯${C_RESET}\n"; }
-box_line()   { printf "  ${C_DIM}│${C_RESET} %-47s ${C_DIM}│${C_RESET}\n" "$1"; }
-box_empty()  { printf "  ${C_DIM}│${C_RESET}                                                 ${C_DIM}│${C_RESET}\n"; }
-
-# ─── Splash Screen ────────────────────────────────────────────────────────────
-
-splash() {
-    clear_screen
-    echo ""
-    echo ""
-
-    local logo=(
-        "  _     _                         _ _       _     _   "
-        " | |   (_)_ __   __ _  ___       | (_) __ _| |__ | |_ "
-        " | |__ | | '_ \\ / _\` |/ _ \\ ____| | |/ _\` | '_ \\| __|"
-        " | '_ \\| | | | | (_| | (_) |____| | | (_| | | | | |_ "
-        " |_.__/|_|_| |_|\\__, |\\___/     |_|_|\\__, |_| |_|\\__|"
-        "                |___/                 |___/            "
-    )
-
-    for line in "${logo[@]}"; do
-        center "$line" "$C_ACCENT"
-        sleep 0.05
-    done
-
-    echo ""
-    center "AI-native fork maintenance" "$C_DIM"
-    echo ""
-    sleep 0.3
-
-    center "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_DIM"
-    echo ""
-    sleep 0.2
-}
-
-# ─── Step Screens ─────────────────────────────────────────────────────────────
-
-step_cli() {
-    echo ""
-    progress_dots 1 4
-    echo ""
-    center "Step 1 of 4" "$C_DIM"
-    center "Install CLI" "${C_BOLD}${C_WHITE}"
-    echo ""
-
-    box_top
-    box_line "Install bingo-light to /usr/local/bin"
-    box_line "This lets you run 'bingo-light' from anywhere."
-    box_empty
-    box_line "  ${C_DIM}$ bingo-light init <upstream-url>${C_RESET}"
-    box_line "  ${C_DIM}$ bingo-light sync${C_RESET}"
-    box_bottom
-    echo ""
-
-    # Pre-authenticate sudo if needed (before backgrounding, so password prompt works)
-    if [[ ! -w "/usr/local/bin" ]]; then
-        sudo -v 2>/dev/null || { fail "sudo required but not available"; return; }
-    fi
-
-    (
-        # Backup existing installation
-        if [[ -f /usr/local/bin/bingo-light ]]; then
-            if [[ ! -w "/usr/local/bin" ]]; then
-                sudo cp /usr/local/bin/bingo-light /usr/local/bin/bingo-light.bak 2>/dev/null || true
-            else
-                cp /usr/local/bin/bingo-light /usr/local/bin/bingo-light.bak 2>/dev/null || true
-            fi
-        fi
-        if [[ ! -w "/usr/local/bin" ]]; then
-            sudo install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
-            sudo mkdir -p /usr/local/bin/bingo_core
-            for f in "$SCRIPT_DIR"/bingo_core/*.py; do
-                sudo install -m 644 "$f" /usr/local/bin/bingo_core/"$(basename "$f")"
-            done
-        else
-            install -m 755 "$SCRIPT_DIR/bingo-light" /usr/local/bin/bingo-light
-            mkdir -p /usr/local/bin/bingo_core
-            for f in "$SCRIPT_DIR"/bingo_core/*.py; do
-                install -m 644 "$f" /usr/local/bin/bingo_core/"$(basename "$f")"
-            done
-        fi
-    ) &
-    if spin $! "Installing CLI..."; then
-        ok "bingo-light installed"
+fetch() {
+    if has_cmd curl; then
+        curl -fsSL "$1" -o "$2"
+    elif has_cmd wget; then
+        wget -qO "$2" "$1"
     else
-        fail "Failed to install bingo-light"
-        return
+        error "curl or wget required"; exit 1
     fi
-    sleep 0.5
 }
 
-step_completions() {
-    clear_screen
-    echo ""
-    progress_dots 2 4
-    echo ""
-    center "Step 2 of 4" "$C_DIM"
-    center "Shell Completions" "${C_BOLD}${C_WHITE}"
-    echo ""
+cleanup() {
+    if [ -n "${_TMPDIR:-}" ] && [ -d "${_TMPDIR:-}" ]; then
+        rm -rf "$_TMPDIR"
+    fi
+}
+trap cleanup EXIT INT TERM
 
-    local shell_name
-    shell_name=$(basename "${SHELL:-/bin/bash}")
+# Compare major.minor versions: version_gte actual minimum
+version_gte() {
+    a_major=${1%%.*}; a_minor=${1#*.}; a_minor=${a_minor%%.*}
+    b_major=${2%%.*}; b_minor=${2#*.}; b_minor=${b_minor%%.*}
+    [ "$a_major" -gt "$b_major" ] 2>/dev/null && return 0
+    [ "$a_major" -eq "$b_major" ] 2>/dev/null && [ "$a_minor" -ge "$b_minor" ] 2>/dev/null && return 0
+    return 1
+}
 
-    box_top
-    box_line "Detected shell: ${C_ACCENT}$shell_name${C_RESET}"
-    box_line "Tab completion for all commands and flags."
-    box_bottom
-    echo ""
+# ─── Prerequisites ───────────────────────────────────────────────────────────
 
-    case "$shell_name" in
-        bash)
-            local dir="${BASH_COMPLETION_USER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions}"
-            mkdir -p "$dir"
-            cp "$SCRIPT_DIR/completions/bingo-light.bash" "$dir/bingo-light"
-            ok "Bash completions → $dir"
-            ;;
-        zsh)
-            local dir="$HOME/.zfunc"
-            mkdir -p "$dir"
-            cp "$SCRIPT_DIR/completions/bingo-light.zsh" "$dir/_bingo-light"
-            if ! grep -qF '.zfunc' ~/.zshrc 2>/dev/null; then
-                echo 'fpath=(~/.zfunc $fpath)' >> ~/.zshrc
-                echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
-            fi
-            ok "Zsh completions → $dir"
-            ;;
-        fish)
-            local dir="$HOME/.config/fish/completions"
-            mkdir -p "$dir"
-            cp "$SCRIPT_DIR/completions/bingo-light.fish" "$dir/bingo-light.fish"
-            ok "Fish completions → $dir"
-            ;;
+check_prerequisites() {
+    header "Prerequisites"
+    fails=0
+
+    # Python 3.8+
+    if has_cmd python3; then
+        py_ver=$(python3 -c 'import sys; print("{}.{}".format(*sys.version_info[:2]))' 2>/dev/null) || py_ver="0.0"
+        if version_gte "$py_ver" "3.8"; then
+            ok "python3 $py_ver"
+        else
+            error "python3 >= 3.8 required (found $py_ver)"; fails=$((fails + 1))
+        fi
+    else
+        error "python3 not found"; fails=$((fails + 1))
+    fi
+
+    # Git 2.20+
+    if has_cmd git; then
+        git_ver=$(git --version 2>/dev/null | sed 's/[^0-9.]//g') || git_ver="0.0"
+        git_short=$(printf '%s' "$git_ver" | cut -d. -f1-2)
+        if version_gte "$git_short" "2.20"; then
+            ok "git $git_ver"
+        else
+            error "git >= 2.20 required (found $git_ver)"; fails=$((fails + 1))
+        fi
+    else
+        error "git not found"; fails=$((fails + 1))
+    fi
+
+    # Download tool
+    if has_cmd curl; then
+        ok "curl"
+    elif has_cmd wget; then
+        ok "wget"
+    else
+        error "curl or wget required"; fails=$((fails + 1))
+    fi
+
+    if [ "$fails" -gt 0 ]; then
+        printf '\n'
+        error "$fails prerequisite(s) missing. Install them and retry."
+        exit 1
+    fi
+}
+
+# ─── Environment detection ───────────────────────────────────────────────────
+
+detect_environment() {
+    PLATFORM=$(uname -s 2>/dev/null || echo "unknown")
+    ARCH=$(uname -m 2>/dev/null || echo "unknown")
+    DETECTED_SHELL=$(basename "${SHELL:-sh}")
+    SRC_DIR=""
+    FROM_LOCAL=false
+
+    # Detect local clone vs curl pipe
+    if [ -f "${0:-}" ]; then
+        _dir=$(cd "$(dirname "$0")" 2>/dev/null && pwd) || _dir=""
+        if [ -n "$_dir" ] && [ -f "$_dir/bingo-light" ]; then
+            SRC_DIR="$_dir"
+            FROM_LOCAL=true
+        fi
+    fi
+}
+
+# ─── Download files (if piped) ───────────────────────────────────────────────
+
+fetch_files() {
+    if [ "$FROM_LOCAL" = true ]; then return 0; fi
+
+    SRC_DIR=$(mktemp -d) || { error "Failed to create temp directory"; exit 1; }
+    _TMPDIR="$SRC_DIR"
+
+    info "Downloading bingo-light @ ${BOLD}$VERSION${RESET} ..."
+    base="$GITHUB_RAW/$VERSION"
+
+    fetch "$base/bingo-light" "$SRC_DIR/bingo-light"
+
+    mkdir -p "$SRC_DIR/bingo_core"
+    for mod in __init__.py exceptions.py models.py git.py config.py state.py repo.py; do
+        fetch "$base/bingo_core/$mod" "$SRC_DIR/bingo_core/$mod"
+    done
+
+    fetch "$base/mcp-server.py" "$SRC_DIR/mcp-server.py"
+
+    if [ "$OPT_NO_COMPLETIONS" = false ]; then
+        mkdir -p "$SRC_DIR/completions"
+        for ext in bash zsh fish; do
+            fetch "$base/completions/bingo-light.$ext" "$SRC_DIR/completions/bingo-light.$ext"
+        done
+    fi
+
+    # setup.py is needed for `bingo-light setup`
+    fetch "$base/bingo_core/setup.py" "$SRC_DIR/bingo_core/setup.py"
+
+    ok "Downloaded all files"
+}
+
+# ─── Configuration summary ───────────────────────────────────────────────────
+
+show_config() {
+    header "Configuration"
+
+    printf '  %-18s %s\n' "Platform:" "$PLATFORM ($ARCH)"
+    printf '  %-18s %s\n' "Shell:" "$DETECTED_SHELL"
+    printf '  %-18s %s\n' "Bin directory:" "$(tildify "$BIN_DIR")"
+    printf '  %-18s %s\n' "Version:" "$VERSION"
+
+    if [ "$FROM_LOCAL" = true ]; then
+        printf '  %-18s %s\n' "Source:" "local ($(tildify "$SRC_DIR"))"
+    else
+        printf '  %-18s %s\n' "Source:" "github.com"
+    fi
+
+    printf '\n'
+}
+
+# ─── Install CLI ─────────────────────────────────────────────────────────────
+
+install_cli() {
+    header "Install CLI"
+
+    # Check existing installation
+    if has_cmd bingo-light; then
+        existing_ver=$(bingo-light --version 2>/dev/null || echo "unknown")
+        info "Existing installation found ($existing_ver)"
+    fi
+
+    # Determine if sudo is needed
+    use_sudo=false
+    if [ ! -d "$BIN_DIR" ]; then
+        mkdir -p "$BIN_DIR" 2>/dev/null || use_sudo=true
+    elif [ ! -w "$BIN_DIR" ]; then
+        use_sudo=true
+    fi
+
+    if [ "$use_sudo" = true ]; then
+        info "Root privileges required for $(tildify "$BIN_DIR")"
+        if ! has_cmd sudo; then
+            error "sudo not found. Run as root or use --bin-dir to install elsewhere."
+            info "Example: $0 --bin-dir \$HOME/.local/bin"
+            exit 1
+        fi
+        sudo -v 2>/dev/null || { error "Failed to obtain sudo"; exit 1; }
+    fi
+
+    _run() { if [ "$use_sudo" = true ]; then sudo "$@"; else "$@"; fi; }
+
+    # Backup existing
+    [ -f "$BIN_DIR/bingo-light" ] && _run cp "$BIN_DIR/bingo-light" "$BIN_DIR/bingo-light.bak" 2>/dev/null || true
+
+    # Install executable
+    _run install -m 755 "$SRC_DIR/bingo-light" "$BIN_DIR/bingo-light"
+
+    # Install core library
+    _run mkdir -p "$BIN_DIR/bingo_core"
+    for f in "$SRC_DIR"/bingo_core/*.py; do
+        _run install -m 644 "$f" "$BIN_DIR/bingo_core/$(basename "$f")"
+    done
+
+    # Install MCP server alongside CLI
+    _run install -m 755 "$SRC_DIR/mcp-server.py" "$BIN_DIR/bingo-light-mcp"
+
+    ok "bingo-light installed to $(tildify "$BIN_DIR")"
+}
+
+# ─── Configure (delegate to bingo-light setup) ──────────────────────────────
+
+run_setup() {
+    header "Configure AI Tools"
+
+    setup_args=""
+    if [ "$OPT_YES" = true ]; then
+        setup_args="--yes"
+    fi
+    if [ "$OPT_NO_COMPLETIONS" = true ]; then
+        setup_args="$setup_args --no-completions"
+    fi
+
+    # Use the just-installed bingo-light
+    bl="$BIN_DIR/bingo-light"
+    if [ -x "$bl" ]; then
+        "$bl" setup $setup_args
+    else
+        # Fallback: run from source
+        python3 "$SRC_DIR/bingo-light" setup $setup_args
+    fi
+}
+
+# ─── Success ─────────────────────────────────────────────────────────────────
+
+show_success() {
+    printf '\n'
+    printf '  %s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n' "$GREEN" "$RESET"
+    printf '  %s%s✓ bingo-light installed successfully%s\n' "$BOLD" "$GREEN" "$RESET"
+    printf '  %s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n' "$GREEN" "$RESET"
+
+    # Check if BIN_DIR is on PATH
+    case ":$PATH:" in
+        *":$BIN_DIR:"*) ;;
         *)
-            skip "Unknown shell, skipped"
+            printf '\n'
+            warn "$(tildify "$BIN_DIR") is not on your PATH"
+            info "Add to your shell profile:"
+            printf '    export PATH="%s:$PATH"\n' "$BIN_DIR"
             ;;
     esac
-    sleep 0.5
+
+    printf '\n  %sQuick start:%s\n\n' "$BOLD" "$RESET"
+    printf '    $ cd your-forked-project\n'
+    printf '    $ %sbingo-light init%s https://github.com/org/repo.git\n' "$BLUE" "$RESET"
+    printf '    $ %sbingo-light patch new%s my-feature\n' "$BLUE" "$RESET"
+    printf '    $ %sbingo-light sync%s\n' "$BLUE" "$RESET"
+    printf '\n  %sRe-run setup anytime:%s  bingo-light setup\n' "$DIM" "$RESET"
+    printf '\n'
+    printf '  %shttps://github.com/DanOps-1/bingo-light%s\n' "$DIM" "$RESET"
+    printf '  %shttps://github.com/DanOps-1/bingo-light/issues%s\n' "$DIM" "$RESET"
+    printf '\n'
 }
 
-step_mcp() {
-    clear_screen
-    echo ""
-    progress_dots 3 4
-    echo ""
-    center "Step 3 of 4" "$C_DIM"
-    center "MCP Server" "${C_BOLD}${C_WHITE}"
-    echo ""
+# ─── Main ────────────────────────────────────────────────────────────────────
 
-    box_top
-    box_line "Connect bingo-light to AI assistants."
-    box_line "29 tools for Claude Code, Cursor, etc."
-    box_empty
-    box_line "  ${C_DIM}AI calls bingo_sync(cwd=\"/repo\")${C_RESET}"
-    box_line "  ${C_DIM}→ patches rebased automatically${C_RESET}"
-    box_bottom
-    echo ""
+main() {
+    printf '\n  %sbingo-light%s %sinstaller%s\n' "$BOLD" "$RESET" "$DIM" "$RESET"
 
-    local configured=false
+    check_prerequisites
+    detect_environment
+    show_config
 
-    # Claude Code
-    if [[ -d "$HOME/.claude" ]] || command -v claude &>/dev/null; then
-        if ask_styled "Configure for Claude Code? [Y/n]"; then
-            local cfg="$HOME/.claude/settings.json"
-            mkdir -p "$HOME/.claude"
-            printf '%s\n%s' "$cfg" "$SCRIPT_DIR/mcp-server.py" | python3 -c "
-import json, os, sys
-lines = sys.stdin.read().strip().split('\n')
-path, mcp_path = lines[0], lines[1]
-data = {}
-if os.path.exists(path):
-    with open(path) as f: data = json.load(f)
-data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': [mcp_path]}
-with open(path, 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && ok "Claude Code configured" || fail "Could not write settings"
-            configured=true
-        else
-            skip "Claude Code skipped"
-        fi
+    if ! confirm "Proceed with installation?"; then
+        info "Installation cancelled."
+        exit 0
     fi
 
-    # Claude Desktop
-    local desktop_cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-    if [[ -d "$HOME/Library/Application Support/Claude" ]]; then
-        echo ""
-        if ask_styled "Configure for Claude Desktop? [Y/n]"; then
-            printf '%s\n%s' "$desktop_cfg" "$SCRIPT_DIR/mcp-server.py" | python3 -c "
-import json, os, sys
-lines = sys.stdin.read().strip().split('\n')
-path, mcp_path = lines[0], lines[1]
-data = {}
-if os.path.exists(path):
-    with open(path) as f: data = json.load(f)
-data.setdefault('mcpServers', {})['bingo-light'] = {'command': 'python3', 'args': [mcp_path]}
-with open(path, 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && ok "Claude Desktop configured" || fail "Could not write config"
-            configured=true
-        else
-            skip "Claude Desktop skipped"
-        fi
+    fetch_files
+    install_cli
+
+    if [ "$OPT_NO_MCP" = false ]; then
+        run_setup
     fi
 
-    if [[ "$configured" == false ]]; then
-        echo ""
-        printf "  ${C_DIM}For other MCP clients, add to config:${C_RESET}\n"
-        echo ""
-        printf "  ${C_DIM}\"bingo-light\": {${C_RESET}\n"
-        printf "  ${C_DIM}  \"command\": \"python3\",${C_RESET}\n"
-        printf "  ${C_DIM}  \"args\": [\"%s/mcp-server.py\"]${C_RESET}\n" "$SCRIPT_DIR"
-        printf "  ${C_DIM}}${C_RESET}\n"
-    fi
-    sleep 0.5
+    show_success
 }
 
-step_skill() {
-    clear_screen
-    echo ""
-    progress_dots 4 4
-    echo ""
-    center "Step 4 of 4" "$C_DIM"
-    center "AI Skill" "${C_BOLD}${C_WHITE}"
-    echo ""
+main
 
-    box_top
-    box_line "The ${C_ACCENT}/bingo${C_RESET} slash command teaches AI"
-    box_line "how to use every bingo-light feature."
-    box_empty
-    box_line "  ${C_DIM}You type: /bingo${C_RESET}"
-    box_line "  ${C_DIM}AI gets: full command reference${C_RESET}"
-    box_bottom
-    echo ""
-
-    local src="$SCRIPT_DIR/.claude/commands/bingo.md"
-    if [[ -f "$src" ]]; then
-        if ask_styled "Install /bingo globally? [Y/n]"; then
-            mkdir -p "$HOME/.claude/commands"
-            cp "$src" "$HOME/.claude/commands/bingo.md"
-            ok "/bingo installed globally"
-        else
-            skip "/bingo skipped"
-        fi
-    else
-        skip "Skill file not found"
-    fi
-    sleep 0.5
-}
-
-# ─── Final Screen ─────────────────────────────────────────────────────────────
-
-finish() {
-    clear_screen
-    echo ""
-    echo ""
-
-    center "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_SUCCESS"
-    echo ""
-    center "Setup complete" "${C_BOLD}${C_SUCCESS}"
-    echo ""
-    center "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_SUCCESS"
-    echo ""
-    echo ""
-
-    box_top
-    box_line "${C_WHITE}Quick start:${C_RESET}"
-    box_empty
-    box_line "  ${C_ACCENT}cd${C_RESET} your-forked-project"
-    box_line "  ${C_ACCENT}bingo-light init${C_RESET} https://github.com/org/repo.git"
-    box_line "  ${C_ACCENT}bingo-light patch new${C_RESET} my-feature"
-    box_line "  ${C_ACCENT}bingo-light sync${C_RESET}"
-    box_empty
-    box_line "${C_WHITE}For AI:${C_RESET}"
-    box_empty
-    box_line "  Type ${C_ACCENT}/bingo${C_RESET} in Claude Code"
-    box_line "  Or let AI call MCP tools directly"
-    box_bottom
-    echo ""
-    echo ""
-    center "https://github.com/DanOps-1/bingo-light" "$C_DIM"
-    echo ""
-    echo ""
-}
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
-
-splash
-sleep 0.3
-step_cli
-step_completions
-step_mcp
-step_skill
-finish
+} # end of { } wrapper — prevents partial execution via curl pipe

@@ -2,13 +2,25 @@
 
 ## Install
 
-### Interactive installer (recommended)
+### pip / pipx
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+pip install bingo-light
+bingo-light setup          # interactive — choose which AI tools to configure
 ```
 
-Sets up: CLI, shell completions (bash/zsh/fish), MCP server, and the `/bingo` AI skill.
+### npm / npx
+
+```bash
+npm install -g bingo-light && bingo-light setup
+```
+
+### Other quick methods
+
+```bash
+brew install DanOps-1/tap/bingo-light  # Homebrew
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | sh  # Shell
+```
 
 ### Other methods
 

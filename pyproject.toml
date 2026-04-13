@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bingo-light"
+dynamic = ["version"]
+description = "AI-native fork maintenance — manage customizations as a clean patch stack on top of upstream"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    { name = "bingo-light contributors" },
+]
+keywords = ["git", "fork", "patch", "mcp", "ai", "maintenance"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.urls]
+Homepage = "https://github.com/DanOps-1/bingo-light"
+Issues = "https://github.com/DanOps-1/bingo-light/issues"
+
+[tool.setuptools]
+script-files = ["bingo-light", "mcp-server.py"]
+
+[tool.setuptools.dynamic]
+version = {attr = "bingo_core.VERSION"}
+
+[tool.setuptools.packages.find]
+include = ["bingo_core*"]

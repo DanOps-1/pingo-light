@@ -35,7 +35,7 @@ bingo_core/          # Core library package (all business logic)
 mcp-server.py        # MCP server (zero-dep Python 3, 29 tools)
 contrib/agent.py     # Advisor agent
 contrib/tui.py       # Terminal dashboard
-install.sh           # Interactive installer
+install.sh           # Installer (POSIX sh, CI-friendly)
 tests/               # Test suites (250 tests across 5 files)
 completions/         # bash/zsh/fish tab completion
 contrib/hooks/       # Example notification hooks

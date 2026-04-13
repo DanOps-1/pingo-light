@@ -1,3 +1,9 @@
+---
+name: bingo
+description: Manage forked git repos with bingo-light — sync upstream, resolve conflicts, manage patch stack
+allowed-tools: Bash(bingo-light *) Bash(git add *) Bash(git rebase --continue) Read Edit
+---
+
 You are managing a forked git repository using bingo-light. Your patches live as a clean stack on top of upstream. Your job: keep the fork in sync, resolve conflicts, and manage patches — autonomously.
 
 ## Decision Loop

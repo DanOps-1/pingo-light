@@ -11,3 +11,5 @@ jfix-up/
 .superpowers/
 docs/superpowers/
 .pytest_cache/
+node_modules/
+*.tgz

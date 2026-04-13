@@ -19,6 +19,7 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 from bingo_core import VERSION, BingoError, Repo  # noqa: E402
+from bingo_core.setup import run_setup  # noqa: E402
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -511,6 +512,11 @@ def _format_undo(result: dict) -> str:
     return f"{_c(GREEN, 'OK')} Restored to {restored}"
 
 
+def _format_setup(result: dict) -> str:
+    """Setup writes its own interactive output to stderr; nothing extra needed."""
+    return ""
+
+
 def _format_generic(result: dict) -> str:
     """Fallback formatter: show message or OK."""
     if result.get("ok") is False:
@@ -543,6 +549,7 @@ def show_help() -> str:
 
   {b}Setup:{r}
     {cy}init{r} <upstream-url> [branch]   Initialize fork tracking
+    {cy}setup{r}                          Configure MCP for AI tools (interactive)
 
   {b}Patch Management:{r}
     {cy}patch new{r} <name>               Create a new patch
@@ -747,6 +754,10 @@ def build_parser() -> argparse.ArgumentParser:
     ws_remove = ws_sub.add_parser("remove", add_help=False)
     ws_remove.add_argument("ws_target")
 
+    # setup
+    p_setup = sub.add_parser("setup", add_help=False)
+    p_setup.add_argument("--no-completions", dest="no_completions", action="store_true")
+
     # help
     sub.add_parser("help", add_help=False)
 
@@ -758,8 +769,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def dispatch(args: argparse.Namespace, json_mode: bool) -> Optional[dict]:
     """Dispatch a parsed command to the Repo method and return the result dict."""
-    repo = Repo()
     cmd = args.command
+
+    # setup doesn't need a Repo (works outside git repos)
+    if cmd == "setup":
+        return run_setup(
+            yes=getattr(args, "yes_mode", False),
+            json_mode=json_mode,
+            no_completions=getattr(args, "no_completions", False),
+        )
+
+    repo = Repo()
 
     if cmd == "init":
         return repo.init(args.upstream_url, args.branch)
@@ -938,6 +958,7 @@ _FORMATTERS: Dict[str, Any] = {
     "auto-sync": _format_auto_sync,
     "undo": _format_undo,
     "smart-sync": _format_smart_sync,
+    "setup": _format_setup,
 }
 
 

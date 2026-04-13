@@ -66,6 +66,7 @@ complete -c bingo-light -f
 
 # ---- Top-level commands ----
 complete -c bingo-light -n __bingo_light_needs_command -a init    -d 'Initialize a new bingo-light project'
+complete -c bingo-light -n __bingo_light_needs_command -a setup   -d 'Configure MCP for AI tools (interactive)'
 complete -c bingo-light -n __bingo_light_needs_command -a patch   -d 'Manage patches'
 complete -c bingo-light -n __bingo_light_needs_command -a sync    -d 'Synchronize changes with upstream'
 complete -c bingo-light -n __bingo_light_needs_command -a status  -d 'Show current status'
@@ -123,7 +124,7 @@ complete -c bingo-light -n '__bingo_light_using_command version'   -s h -l help 
 complete -c bingo-light -n '__bingo_light_using_command conflict-resolve' -s h -l help -d 'Show help'
 
 # ---- help: complete with command names ----
-complete -c bingo-light -n '__bingo_light_using_command help' -a 'init patch sync status doctor auto-sync log undo diff version conflict-analyze conflict-resolve config history test workspace smart-sync session' -d 'Command'
+complete -c bingo-light -n '__bingo_light_using_command help' -a 'init setup patch sync status doctor auto-sync log undo diff version conflict-analyze conflict-resolve config history test workspace smart-sync session' -d 'Command'
 
 # ---- patch subcommands (also alias "p") ----
 complete -c bingo-light -n __bingo_light_patch_needs_subcommand -a new     -d 'Create a new patch'

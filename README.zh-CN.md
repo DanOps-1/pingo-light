@@ -48,8 +48,10 @@ GitHub 的 "Sync fork" 按钮一碰到你的定制化改动就报废。`git reba
 ## 快速开始
 
 ```bash
-# 安装
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+# 安装（任选一种）
+pip install bingo-light             # Python
+npm install -g bingo-light          # Node.js
+brew install DanOps-1/tap/bingo-light  # Homebrew
 
 # 初始化 Fork 追踪
 cd my-forked-project
@@ -123,18 +125,54 @@ $ bingo-light conflict-analyze --json
 
 ## 安装
 
-### 交互式安装器（推荐）
+任选一种安装方式，然后运行 `bingo-light setup` 交互式配置 MCP（支持 Claude Code、Cursor、Windsurf、VS Code/Copilot、Zed、Gemini CLI 等）。
+
+### pip / pipx
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+pip install bingo-light        # 或: pipx install bingo-light
+bingo-light setup              # 交互式选择要配置的 AI 工具
 ```
 
-安装器搞定一切：CLI、Shell 补全（bash/zsh/fish）、Claude MCP 服务器、`/bingo` AI 技能。
+### npm / npx
 
-### Homebrew (macOS/Linux)
+```bash
+npm install -g bingo-light     # 全局安装
+bingo-light setup
+
+# 或用 npx 免安装：
+npx bingo-light setup
+```
+
+MCP 客户端可直接使用 npx：
+```json
+{"command": "npx", "args": ["-y", "bingo-light-mcp"]}
+```
+
+### Homebrew
 
 ```bash
 brew install DanOps-1/tap/bingo-light
+bingo-light setup
+```
+
+### Docker
+
+```bash
+# CLI
+docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light status
+
+# MCP 服务器（stdio 传输）
+docker run --rm -i -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light mcp-server.py
+```
+
+### Shell 安装器
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | sh
+
+# 非交互模式（CI / Docker）
+curl -fsSL .../install.sh | sh -s -- --yes
 ```
 
 ### 从源码安装
@@ -142,11 +180,10 @@ brew install DanOps-1/tap/bingo-light
 ```bash
 git clone https://github.com/DanOps-1/bingo-light.git
 cd bingo-light
-make install       # 安装到 /usr/local/bin
-make completions   # bash/zsh/fish 补全
+make install && bingo-light setup
 ```
 
-**依赖：** Python 3.8+, git 2.20+。无其他依赖。
+**依赖：** Python 3.8+, git 2.20+。零 pip 依赖。
 
 ## 功能特性
 
@@ -471,7 +508,7 @@ bingo_core/          核心库包（全部业务逻辑）
 mcp-server.py        MCP 服务器（零依赖 Python 3，29 个工具）
 contrib/agent.py     Advisor 代理（监控 + 分析 + 安全时自动同步）
 contrib/tui.py       终端面板（curses TUI）
-install.sh           交互式安装器（动画 TUI）
+install.sh           安装器（--yes 支持 CI，--help 查看选项）
 completions/         Shell 补全（bash/zsh/fish）
 contrib/hooks/       通知 Hook 示例（Slack/Discord/Webhook）
 tests/               测试套件（250 个测试，5 个文件）

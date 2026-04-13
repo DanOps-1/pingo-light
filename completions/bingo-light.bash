@@ -10,7 +10,7 @@ _bingo_light() {
     local cur prev words cword
     _init_completion || return
 
-    local -r toplevel_commands="init patch sync status doctor auto-sync log undo diff version help conflict-analyze conflict-resolve config history test workspace smart-sync session"
+    local -r toplevel_commands="init setup patch sync status doctor auto-sync log undo diff version help conflict-analyze conflict-resolve config history test workspace smart-sync session"
     local -r toplevel_aliases="p s st d ws"
     local -r all_toplevel="${toplevel_commands} ${toplevel_aliases}"
 
@@ -36,7 +36,7 @@ _bingo_light() {
             diff|d)
                 cmd="diff"
                 ;;
-            init|doctor|auto-sync|log|undo|version|help|conflict-analyze|conflict-resolve|config|history|test|workspace|ws|smart-sync|session)
+            init|setup|doctor|auto-sync|log|undo|version|help|conflict-analyze|conflict-resolve|config|history|test|workspace|ws|smart-sync|session)
                 cmd="${words[i]}"
                 ;;
             *)

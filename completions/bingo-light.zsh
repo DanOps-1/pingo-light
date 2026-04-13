@@ -11,6 +11,7 @@ _bingo-light() {
     local -a toplevel_commands=(
         'init:Initialize a new bingo-light project'
         'patch:Manage patches'
+        'setup:Configure MCP for AI tools (interactive)'
         'sync:Synchronize changes with upstream'
         'status:Show current status'
         'doctor:Diagnose and fix common problems'
@@ -154,7 +155,7 @@ _bingo-light() {
                             ;;
                     esac
                     ;;
-                init|doctor|auto-sync|log|undo|version|conflict-analyze|conflict-resolve|config|history|test|smart-sync|session)
+                init|setup|doctor|auto-sync|log|undo|version|conflict-analyze|conflict-resolve|config|history|test|smart-sync|session)
                     _arguments $help_flag
                     ;;
                 help)

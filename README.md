@@ -38,8 +38,10 @@ Every command speaks JSON. The built-in MCP server gives AI agents 29 tools to m
 ## Quick Start
 
 ```bash
-# Install (one line)
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+# Install (pick one)
+pip install bingo-light             # Python
+npm install -g bingo-light          # Node.js
+brew install DanOps-1/tap/bingo-light  # Homebrew
 
 # Point at upstream
 cd your-forked-project
@@ -104,18 +106,54 @@ That's it. Three commands and your fork stays in sync forever.
 
 ## Installation
 
-### Interactive installer (recommended)
+Install with any package manager, then run `bingo-light setup` to interactively configure MCP for your AI tools (Claude Code, Cursor, Windsurf, VS Code/Copilot, Zed, Gemini CLI, etc.).
+
+### pip / pipx
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | bash
+pip install bingo-light        # or: pipx install bingo-light
+bingo-light setup              # interactive — pick which AI tools to configure
 ```
 
-Sets up everything: CLI, shell completions (bash/zsh/fish), MCP server for Claude, and the AI skill.
+### npm / npx
 
-### Homebrew (macOS / Linux)
+```bash
+npm install -g bingo-light     # global install
+bingo-light setup
+
+# Or use npx — no install needed:
+npx bingo-light setup
+```
+
+MCP clients can use npx directly:
+```json
+{"command": "npx", "args": ["-y", "bingo-light-mcp"]}
+```
+
+### Homebrew
 
 ```bash
 brew install DanOps-1/tap/bingo-light
+bingo-light setup
+```
+
+### Docker
+
+```bash
+# CLI
+docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light status
+
+# MCP server (stdio transport)
+docker run --rm -i -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light mcp-server.py
+```
+
+### Shell installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | sh
+
+# Non-interactive (CI / Docker)
+curl -fsSL .../install.sh | sh -s -- --yes
 ```
 
 ### From source
@@ -123,11 +161,10 @@ brew install DanOps-1/tap/bingo-light
 ```bash
 git clone https://github.com/DanOps-1/bingo-light.git
 cd bingo-light
-make install       # copies to /usr/local/bin
-make completions   # bash/zsh/fish tab completion
+make install && bingo-light setup
 ```
 
-**Requirements:** Python 3.8+, git 2.20+. No other dependencies.
+**Requirements:** Python 3.8+, git 2.20+. Zero pip dependencies.
 
 ---
 
@@ -449,7 +486,7 @@ bingo_core/          Core library package (all business logic)
 mcp-server.py        MCP server (zero-dep Python 3, 29 tools, JSON-RPC 2.0)
 contrib/agent.py     Advisor agent (monitors drift, auto-syncs when safe)
 contrib/tui.py       Terminal dashboard (curses TUI, real-time monitoring)
-install.sh           Interactive installer (animated, sets up everything)
+install.sh           Installer (--yes for CI, --help for options)
 completions/         Shell completions (bash / zsh / fish)
 contrib/hooks/       Notification hook examples (Slack / Discord / Webhook)
 tests/test.sh        Test suite (70 tests)
