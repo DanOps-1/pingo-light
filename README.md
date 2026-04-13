@@ -2,7 +2,7 @@
   <br>
   <img src="docs/logo.svg" alt="bingo-light logo" width="200">
   <br><br>
-  <strong>面向人类和 AI 代理的 Fork 维护工具。<br>一条命令同步。零依赖。</strong>
+  <strong>Fork 同步，一条命令搞定。<br>人用、AI 用，零依赖。</strong>
   <br><br>
   <a href="README.en.md">English</a> | <b>简体中文</b>
   <br><br>
@@ -16,13 +16,13 @@
   <br><br>
 </p>
 
-GitHub 的 "Sync fork" 按钮一碰到你的定制化改动就报废。`git rebase` 是个 6 步仪式。而且这些东西没一个能从 AI 代理调用。
+GitHub 的 "Sync fork" 按钮？你一改代码它就废了。手动 `git rebase`？六步操作，每次都得记。AI 想帮你同步？没接口可调。
 
-**bingo-light 三个问题一起解决。**
+**bingo-light 把这三个问题一锅端。**
 
-你的补丁作为干净的栈叠在上游之上。同步就是 `bingo-light sync`。冲突自动记忆，解决一次永远不用再解决。出了问题 `bingo-light undo` 一秒复原。
+改动以补丁栈的形式叠在上游之上，干干净净。同步一句 `bingo-light sync`。冲突解过一次就记住了，下次自动跳过。搞砸了 `bingo-light undo` 秒回。
 
-每条命令都输出 JSON。内置 MCP 服务器提供 29 个工具，让 AI 代理自主管理你的 Fork — 从初始化到冲突解决，全程无需人工介入。
+所有命令支持 `--json` 输出。内置 MCP 服务器 29 个工具，AI 从初始化到冲突解决全程自主，不用人盯。
 
 ---
 
@@ -61,29 +61,29 @@ bingo-light init https://github.com/original/project.git
 vim src/feature.py
 bingo-light patch new my-feature
 
-# 与上游同步（补丁自动变基到最新上游之上）
+# 上游有更新？一句话同步
 bingo-light sync
 ```
 
-搞定。你的补丁始终是干净的栈，叠在上游最新代码之上。想同步就同步。
+就这么简单。补丁永远干净地叠在最新上游之上。
 
 ## 演示
 
-### 基本流程：初始化、创建补丁、同步
+### 日常操作：初始化 → 建补丁 → 同步
 
 <p align="center">
   <img src="docs/demo.svg" alt="bingo-light 基本演示" width="850">
 </p>
 
-### 冲突解决：同步、分析、修复
+### 冲突处理：同步 → 分析 → 搞定
 
 <p align="center">
   <img src="docs/demo-conflict.svg" alt="bingo-light 冲突解决演示" width="850">
 </p>
 
-> AI 调用 `conflict-analyze --json`，读取结构化的 ours/theirs 数据，写入合并后的文件，rebase 自动继续。全程不需要人。
+> AI 调 `conflict-analyze --json` 拿到双方代码，写好合并结果，rebase 自动继续。全程零人工。
 
-### AI 获取结构化 JSON
+### AI 拿到的是结构化数据
 
 ```
 $ bingo-light status --json
@@ -102,7 +102,7 @@ $ bingo-light status --json
 }
 ```
 
-### 冲突解决（AI 工作流）
+### 冲突分析（AI 直接消费）
 
 ```
 $ bingo-light conflict-analyze --json
@@ -125,13 +125,13 @@ $ bingo-light conflict-analyze --json
 
 ## 安装
 
-任选一种安装方式，然后运行 `bingo-light setup` 交互式配置 MCP（支持 Claude Code、Cursor、Windsurf、VS Code/Copilot、Zed、Gemini CLI 等）。
+装完跑 `bingo-light setup`，交互式配好 MCP 和 AI Skill（Claude Code、Cursor、Windsurf、VS Code/Copilot、Gemini CLI 等一键选配）。
 
 ### pip / pipx
 
 ```bash
 pip install bingo-light        # 或: pipx install bingo-light
-bingo-light setup              # 交互式选择要配置的 AI 工具
+bingo-light setup              # 选配 AI 工具
 ```
 
 ### npm / npx
@@ -140,11 +140,11 @@ bingo-light setup              # 交互式选择要配置的 AI 工具
 npm install -g bingo-light     # 全局安装
 bingo-light setup
 
-# 或用 npx 免安装：
+# 或 npx 免装：
 npx bingo-light setup
 ```
 
-MCP 客户端可直接使用 npx：
+MCP 客户端直接用 npx：
 ```json
 {"command": "npx", "args": ["-y", "bingo-light-mcp"]}
 ```
@@ -162,7 +162,7 @@ bingo-light setup
 # CLI
 docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light status
 
-# MCP 服务器（stdio 传输）
+# MCP 服务器（stdio）
 docker run --rm -i -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light mcp-server.py
 ```
 
@@ -183,43 +183,43 @@ cd bingo-light
 make install && bingo-light setup
 ```
 
-**依赖：** Python 3.8+, git 2.20+。零 pip 依赖。
+**依赖：** Python 3.8+ / git 2.20+，没了。
 
 ## 功能特性
 
-### 给 AI 代理用
+### AI 侧
 
 | 功能 | 说明 |
 |------|------|
-| **MCP 服务器** | 29 个工具，覆盖从初始化到冲突解决的全流程 |
-| **`--json` 标志** | 所有命令返回结构化 JSON |
-| **`--yes` 标志** | 完全非交互，不需要 TTY |
-| **自动检测非 TTY** | 管道或子进程调用时自动抑制交互提示 |
-| **`BINGO_DESCRIPTION`** | 通过环境变量设置补丁描述 |
-| **`conflict-analyze`** | 结构化冲突数据：文件、ours、theirs、提示 |
-| **`conflict-resolve`** | 通过 MCP 写入解决内容，自动暂存，继续 rebase |
-| **Advisor 代理** | `contrib/agent.py` 监控漂移、分析风险、安全时自动同步 |
+| **MCP 服务器** | 29 个工具，初始化到冲突解决全覆盖 |
+| **`--json`** | 所有命令输出结构化 JSON |
+| **`--yes`** | 跳过一切确认，不需要 TTY |
+| **非 TTY 自适应** | 管道或子进程调用时自动静默 |
+| **`BINGO_DESCRIPTION`** | 环境变量设补丁描述 |
+| **`conflict-analyze`** | 冲突数据结构化：文件、双方代码、解决提示 |
+| **`conflict-resolve`** | MCP 直接写入解决内容，自动暂存 + 继续 rebase |
+| **Advisor 代理** | `contrib/agent.py` 自动监控、分析、安全时自动同步 |
 
-### 给人类用
+### 人类侧
 
 | 功能 | 说明 |
 |------|------|
-| **零依赖** | Python 3 + git，`pip install bingo-light` 即可 |
-| **命名补丁栈** | 每个改动都是一个独立的、有名字的 commit |
-| **一键同步** | `bingo-light sync` 把你的补丁变基到上游之上 |
-| **预演模式** | `sync --dry-run` 先在临时分支上试跑 |
-| **冲突记忆** | git rerere 自动启用；解决一次，永远不用再解决 |
-| **一键撤销** | `bingo-light undo` 瞬间恢复同步前状态 |
-| **冲突预测** | `status` 提前告诉你哪些文件可能冲突 |
-| **诊断** | `doctor` 全面诊断 + 测试变基 |
-| **导出/导入** | 补丁导出为 `.patch` 文件（兼容 quilt） |
-| **CI 自动同步** | 生成 GitHub Actions 工作流，冲突时自动告警 |
-| **TUI 面板** | 基于 curses 的实时监控面板（`contrib/tui.py`） |
-| **多仓库** | `workspace` 一个地方管理所有 Fork |
-| **Shell 补全** | bash、zsh、fish 全支持 |
-| **通知 Hook** | Discord、Slack、通用 Webhook，同步/冲突/测试事件触发 |
-| **补丁元数据** | 标签、原因、过期日期、上游 PR 追踪 |
-| **测试集成** | 同步后自动跑测试，失败自动回滚 |
+| **零依赖** | Python 3 + git，一行装完 |
+| **命名补丁** | 每个改动是独立的、有名字的 commit |
+| **一键同步** | `bingo-light sync`，补丁自动 rebase 到最新上游 |
+| **先试后跑** | `sync --dry-run` 临时分支预演，不碰真代码 |
+| **冲突记忆** | rerere 自动开，解一次就记住，再也不问 |
+| **秒级撤销** | `bingo-light undo` 恢复同步前状态 |
+| **冲突预警** | `status` 提前告诉你哪些文件会出事 |
+| **自检修复** | `doctor` 全面体检 + 试跑 rebase |
+| **导出导入** | `.patch` 文件，quilt 兼容 |
+| **CI 自动同步** | 生成 GitHub Actions 流水线，冲突自动告警 |
+| **TUI 面板** | curses 实时仪表盘（`contrib/tui.py`） |
+| **多仓管理** | `workspace` 统一管所有 Fork |
+| **补全** | bash / zsh / fish |
+| **通知推送** | Discord、Slack、Webhook，事件触发 |
+| **补丁元数据** | 标签、原因、过期时间、关联上游 PR |
+| **测试联动** | 同步后自动跑测试，挂了自动回滚 |
 
 ## 工作原理
 
@@ -242,32 +242,19 @@ make install && bingo-light setup
     HEAD (你的工作 Fork)
 ```
 
-**同步流程：** 拉取上游 -> 快进追踪分支 -> 把补丁变基到上游之上。你的补丁始终干净地叠在最新代码上。
+**同步：** fetch 上游 → 快进追踪分支 → rebase 补丁到最新上游。补丁永远干净地叠在最新代码上。
 
-**冲突记忆：** 初始化时自动启用 git rerere。解决一次冲突，git 就记住了 -- 下次同步碰到同样的冲突，自动应用之前的修复。
+**冲突记忆：** 初始化时自动开 rerere。解过一次，git 就记住了——下次碰到同样的冲突直接跳过。
 
-**AI 冲突流程：** rebase 碰到冲突时，AI 调用 `conflict-analyze` 获取结构化数据（每个文件的 ours/theirs/提示），通过 `conflict-resolve` 写入解决内容，rebase 自动继续。全程不需要人。
+**AI 解冲突：** rebase 卡住时，AI 调 `conflict-analyze` 拿双方代码和提示，写好合并结果扔给 `conflict-resolve`，rebase 自动继续，不用人管。
 
 ## MCP 服务器
 
-`mcp-server.py` 是零依赖的 Python 3 MCP 服务器，通过 stdio 暴露 29 个工具（JSON-RPC 2.0）。
+`mcp-server.py`，纯 Python 3，零依赖，stdio 传输，29 个工具，JSON-RPC 2.0。
 
-### 配置
+运行 `bingo-light setup` 自动配置，或手动添加：
 
-**Claude Code** -- 添加到 `.mcp.json` 或 `~/.claude/settings.json`：
-
-```json
-{
-  "mcpServers": {
-    "bingo-light": {
-      "command": "python3",
-      "args": ["/path/to/bingo-light/mcp-server.py"]
-    }
-  }
-}
-```
-
-**Claude Desktop** -- 添加到 `~/Library/Application Support/Claude/claude_desktop_config.json`：
+**Claude Code**（`.mcp.json` 或 `~/.claude/settings.json`）：
 
 ```json
 {
@@ -280,7 +267,20 @@ make install && bingo-light setup
 }
 ```
 
-**任意 MCP 客户端**（VS Code Copilot、Cursor、自定义代理）：通过 stdio 连接 `python3 mcp-server.py`。
+**Claude Desktop**（`~/Library/Application Support/Claude/claude_desktop_config.json`）：
+
+```json
+{
+  "mcpServers": {
+    "bingo-light": {
+      "command": "python3",
+      "args": ["/path/to/bingo-light/mcp-server.py"]
+    }
+  }
+}
+```
+
+**其他客户端**（Cursor、Windsurf、VS Code Copilot 等）：stdio 连 `python3 mcp-server.py`，或跑 `bingo-light setup` 一键配。
 
 ### 全部工具
 
@@ -351,19 +351,19 @@ bingo-light help                             打印帮助
 
 ### Claude Code (MCP)
 
-配置好 MCP 服务器后，Claude Code 端到端管理你的 Fork：
+MCP 配好后，Claude Code 全程接管：
 
 ```
-你: "把我的 Fork 和上游同步，修复所有冲突。"
+你: "同步上游，冲突帮我修了。"
 
 Claude Code:
-  1. bingo_status(cwd)        -> 落后 47 个 commit，风险文件: core.c
-  2. bingo_sync(cwd, dry_run) -> 预测 1 个冲突
-  3. bingo_sync(cwd)          -> rebase 在冲突处停下
-  4. bingo_conflict_analyze() -> 结构化 ours/theirs/提示
-  5. 读取双方版本，生成合并内容
-  6. bingo_conflict_resolve(cwd, file, content) -> 搞定
-  7. bingo_status(cwd)        -> 0 落后，所有补丁干净
+  1. bingo_status(cwd)        → 落后 47 commit，risk: core.c
+  2. bingo_sync(cwd, dry_run) → 预判 1 个冲突
+  3. bingo_sync(cwd)          → rebase 卡在冲突
+  4. bingo_conflict_analyze() → 拿到双方代码 + 提示
+  5. 读两边，写合并结果
+  6. bingo_conflict_resolve(cwd, file, content) → 搞定
+  7. bingo_status(cwd)        → 0 落后，补丁干净
 ```
 
 ### Aider / CLI 代理
@@ -398,7 +398,7 @@ if status["behind"] > 0:
 
 ## 配置
 
-配置存储在 `.bingolight`（git-config 格式），通过 `.git/info/exclude` 排除在版本控制之外。
+配置存在 `.bingolight`（git-config 格式），自动排除在版本控制外。
 
 ```bash
 bingo-light config set sync.auto-test true     # 同步后自动跑测试
@@ -408,7 +408,7 @@ bingo-light config list                         # 查看所有配置
 
 ### 通知 Hook
 
-在 `.bingo/hooks/` 中放置可执行脚本：
+在 `.bingo/hooks/` 放可执行脚本：
 
 | Hook | 触发时机 |
 |------|---------|
@@ -416,50 +416,50 @@ bingo-light config list                         # 查看所有配置
 | `on-conflict` | rebase 碰到冲突时 |
 | `on-test-fail` | 同步后测试失败时 |
 
-每个 Hook 通过 stdin 接收 JSON 数据。示例见 [contrib/hooks/](contrib/hooks/)（Slack、Discord、通用 Webhook）。
+Hook 通过 stdin 接 JSON。示例见 [contrib/hooks/](contrib/hooks/)（Slack / Discord / Webhook）。
 
 ## 常见问题
 
 <details>
 <summary><b>为什么不直接 <code>git rebase</code>？</b></summary>
 
-可以啊。bingo-light 自动化了 rebase 周边那堆烦人的操作：追踪上游远程、维护专用补丁分支、启用 rerere、同步前预测冲突、给自动化提供结构化输出。一次性 rebase 用不着这工具。但如果你长期维护 3 个以上补丁，它能省下大量时间。
+可以。bingo-light 包的是 rebase 周边那些烦事：追踪上游、维护补丁分支、开 rerere、预测冲突、输出结构化数据。偶尔 rebase 一次用不着它，但长期维护好几个补丁的话，省心省力。
 </details>
 
 <details>
 <summary><b>能用在已有的 Fork 上吗？</b></summary>
 
-能。在你的 Fork 里跑 `bingo-light init <upstream-url>`，然后用 `bingo-light patch new <name>` 把已有的改动转成命名补丁。任何标准 git 仓库都行。
+能。进你的 Fork 目录，`bingo-light init <upstream-url>`，再 `bingo-light patch new <name>` 把现有改动转成补丁。标准 git 仓库就行。
 </details>
 
 <details>
-<summary><b>只给 AI 用吗？人也能用吗？</b></summary>
+<summary><b>只给 AI 用？</b></summary>
 
-当然都能用。`bingo-light sync` 这条命令，你跑和 AI 跑效果完全一样。AI 原生功能（`--json`、`--yes`、MCP）是纯增量的附加能力。不加这些标志，输出就是正常的人类友好格式。
+人和 AI 用的是同一套命令。`bingo-light sync` 谁跑都一样。`--json`、`--yes`、MCP 这些是给 AI 加的接口，不加就是正常的人类输出。
 </details>
 
 <details>
-<summary><b>冲突记忆是怎么回事？</b></summary>
+<summary><b>冲突记忆怎么回事？</b></summary>
 
-bingo-light 在 `init` 时自动启用 git 的 `rerere`（reuse recorded resolution）。你解决一次冲突，git 就记住了。下次同步碰到同样的冲突，自动应用之前的修复。bingo-light 还会检测已自动解决的冲突并继续 rebase，不会傻等你。
+`init` 时自动开了 git 的 `rerere`（reuse recorded resolution）。你解一次冲突，git 记住解法。下次碰到一样的冲突，直接套用，不再问你。bingo-light 还会检测到自动解决的冲突后自己继续 rebase，不会卡着等人。
 </details>
 
 <details>
-<summary><b>同步搞砸了怎么办？</b></summary>
+<summary><b>同步搞砸了？</b></summary>
 
-跑 `bingo-light undo`。它把补丁分支恢复到同步前的精确状态。基于 git reflog 实现，即使经历了复杂的 rebase 也稳得很。
+`bingo-light undo`。补丁分支秒回同步前的状态。底层用 reflog，再复杂的 rebase 也能回。
 </details>
 
 <details>
 <summary><b>支持 GitHub/GitLab/Bitbucket 吗？</b></summary>
 
-支持。bingo-light 用的是标准 git 操作（fetch、rebase、push），跟任何 git 远程都能配合。`auto-sync` 命令生成 GitHub Actions 工作流，但核心工具跟平台无关。
+都支持。底层就是标准 git 操作（fetch、rebase、push），什么 git 远程都能用。`auto-sync` 能生成 GitHub Actions 流水线，但核心功能不绑平台。
 </details>
 
 <details>
 <summary><b>和 <code>git format-patch</code> / quilt 有什么区别？</b></summary>
 
-`format-patch` 能导出补丁，但不管理活的补丁栈。quilt 管理补丁，但在 git 体系之外运作。bingo-light 把补丁保持为真正的 git commit，所以你拥有完整的 git 历史、冲突解决能力、rerere 记忆 -- 同时还能以 quilt 兼容格式导出/导入。
+`format-patch` 能导出但不管活的补丁栈。quilt 管栈但脱离了 git。bingo-light 的补丁就是真正的 git commit，享受完整历史、冲突解决、rerere 记忆，同时支持 quilt 格式导出导入。
 </details>
 
 ## 为什么不用...
@@ -468,21 +468,21 @@ bingo-light 在 `init` 时自动启用 git 的 `rerere`（reuse recorded resolut
 <summary><b>...GitHub 的 "Sync fork" 按钮？</b></summary>
 <br>
 
-它只能做 fast-forward。只要你有任何定制化改动（fork 上有上游没有的 commit），它要么拒绝，要么创建一个 merge commit 把你的改动埋起来。它没有补丁栈的概念，没有冲突记忆，没有给 AI 代理用的 API。
+只能 fast-forward。你一有自己的改动，它要么拒绝要么生成 merge commit 把你的代码埋了。没有补丁栈，没有冲突记忆，没有 API。
 </details>
 
 <details>
 <summary><b>...手动 <code>git rebase</code>？</b></summary>
 <br>
 
-你可以。需要 6 步：fetch、checkout tracking 分支、pull、checkout patches 分支、rebase、push。你得记住哪个分支是哪个，手动启用 rerere，出了问题还得祈祷 reflog 没搞乱。bingo-light 把这些全包进 `bingo-light sync`，带自动撤销、冲突预测和结构化输出。
+可以，6 步：fetch、切 tracking 分支、pull、切 patches 分支、rebase、push。得记住分支名、手动开 rerere、搞砸了自己从 reflog 里捞。`bingo-light sync` 一条命令包了，还带撤销、冲突预测和结构化输出。
 </details>
 
 <details>
 <summary><b>...StGit / quilt / TopGit？</b></summary>
 <br>
 
-StGit（649 stars）管理补丁栈但没有 AI 集成、没有 MCP 服务器、没有 JSON 输出、没有冲突预测。quilt 完全在 git 体系之外运作 — 没有 rerere，没有历史。TopGit 基本已经废弃。它们都不是为 AI 代理时代设计的。
+StGit 管栈但没 AI 集成、没 MCP、没 JSON 输出、没冲突预测。quilt 脱离 git 体系，没 rerere 没历史。TopGit 基本废弃了。这些工具都不是为 AI 时代设计的。
 </details>
 
 ## 与其他方案对比
@@ -517,7 +517,7 @@ docs/                文档
 
 ## 参与贡献
 
-欢迎贡献。纯 Python，零依赖，不需要构建。
+欢迎 PR。纯 Python，零依赖，不用构建。
 
 ```bash
 git clone https://github.com/DanOps-1/bingo-light.git
