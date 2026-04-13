@@ -28,20 +28,20 @@ DO NOT try to manually write MCP config JSON. Use `bingo-light setup` instead.
 
 ### Step 0: ASK THE USER FIRST
 
-**STOP. Do NOT install anything yet.** Ask the user these questions and wait for answers:
+**STOP. Do NOT install anything yet.** Ask the user ALL of the following questions in one message, then wait for answers:
 
-1. **How do you want to install?** (recommend pip, but ask)
-   - pip (recommended)
-   - npm
-   - brew
+1. **安装方式** — pip（推荐）、npm、还是 brew？
 
-2. **Do you want MCP configured?** (recommend yes — lets you call bingo-light tools directly)
+2. **MCP 配置** — 是否配置 MCP 服务器？（推荐：是。配了之后你就能直接调用 bingo-light 的 29 个工具，比如同步、补丁管理、冲突解决等）
 
-3. **Do you want AI Skills installed?** (recommend yes — teaches you the bingo-light workflow)
+3. **AI Skill 安装** — 是否安装 AI 自定义指令？（推荐：是。安装后你会自动学会 bingo-light 的最佳实践工作流）
 
-4. **Do you have a forked repo to initialize?** If yes, get the upstream URL.
+4. **Fork 仓库** — 是否有一个已经 fork 的仓库需要现在就初始化？
+   - 如果用户说"有"，问他要 **上游仓库的 URL**（就是他 fork 来源的那个原始项目地址，比如 `https://github.com/原作者/项目名.git`）
+   - 如果用户不确定，帮他查：进入 fork 仓库目录，运行 `git remote -v`，找 upstream 或 origin 对应的 URL
+   - 如果用户说"没有"或"以后再说"，跳过这步
 
-**DO NOT proceed until the user answers.** If the user says "just do it all", that counts as answering.
+**DO NOT proceed until the user answers.** If the user says "just do it all" or "全部装", that counts as answering yes to all.
 
 ---
 
@@ -70,19 +70,25 @@ If command not found, try: `pip install --user bingo-light` or `pipx install bin
 
 **CRITICAL: Use `bingo-light setup`. Do NOT manually edit MCP config files.**
 
-The `setup` command automatically detects installed AI tools, finds the correct MCP server binary, writes the correct config format for each tool, and installs Skills. Manual config is error-prone (wrong binary path, wrong args, wrong config format).
+`setup` 会自动检测已安装的 AI 工具、找到正确的 MCP 二进制路径、写入正确的配置格式。手动配容易出错（路径错、参数错、格式错），所以永远优先用 setup。
 
-If user wants to pick which tools to configure (interactive):
+**永远优先用不带 `--yes` 的交互模式**，让用户在终端里自己选要配哪些工具：
+
 ```bash
 bingo-light setup
 ```
 
-If user said "configure everything" or "just do it":
+只有当用户明确说了"全部装"、"all"、"just do it"这类话时，才能用 `--yes`：
 ```bash
 bingo-light setup --yes
 ```
 
-**After setup, verify MCP is working** by restarting your AI tool session and checking that bingo-light tools are available.
+如果用户只说了"是"或"好"，那是回答你的问题，不是让你跳过选择。用不带 `--yes` 的版本。
+
+**setup 跑完后：**
+1. 告诉用户配好了哪些工具
+2. 提醒用户重启 AI 工具的 session 以加载 MCP
+3. 用户重启后，让他用 `/mcp` 或类似命令验证连接
 
 **DO NOT do any of the following:**
 - Do NOT run `bingo-light mcp-server` (this command does not exist)
@@ -114,11 +120,21 @@ which bingo-light-mcp 2>/dev/null || find /usr -name bingo-light-mcp 2>/dev/null
 
 ### Step 3: Initialize a Fork (if applicable)
 
-Only if the user has a forked repo and gave you the upstream URL:
+只在用户说有 fork 仓库时才做这步。
+
+"Upstream URL" 就是用户 fork 来源的那个原始项目地址。如果用户不知道，帮他查：
 
 ```bash
 cd /path/to/forked-project
-bingo-light init <upstream-url> --json --yes
+git remote -v    # 看 origin 或 upstream 对应的 URL
+```
+
+如果用户的 fork 是从 `https://github.com/original-author/project` fork 来的，那上游 URL 就是这个。
+
+初始化：
+```bash
+cd /path/to/forked-project
+bingo-light init https://github.com/original-author/project.git --json --yes
 ```
 
 ---
