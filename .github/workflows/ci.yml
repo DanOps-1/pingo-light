@@ -63,15 +63,9 @@ jobs:
 
       - name: Python syntax check
         run: |
-          python3 -c "import py_compile; py_compile.compile('bingo-light', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/__init__.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/exceptions.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/models.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/git.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/config.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/state.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('bingo_core/repo.py', doraise=True)"
-          python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)"
+          for f in bingo-light mcp-server.py bingo_core/*.py; do
+            python3 -c "import py_compile; py_compile.compile('$f', doraise=True)"
+          done
 
       - name: Flake8
         run: |
@@ -97,6 +91,7 @@ jobs:
           FAIL=0
           check() { if [ "$2" != "$V" ]; then echo "::error::$1 has version $2, expected $V"; FAIL=1; fi; }
           check "mcp-server.py" "$(python3 -c "import re; print(re.search(r'\"version\":\s*\"(.+?)\"', open('mcp-server.py').read()).group(1))")"
+          check "package.json" "$(python3 -c "import json; print(json.load(open('package.json'))['version'])")"
           check "homebrew formula" "$(python3 -c "import re; print(re.search(r'v(\d+\.\d+\.\d+)\.tar\.gz', open('contrib/homebrew/bingo-light.rb').read()).group(1))")"
           grep -q "currently $V" CLAUDE.md || { echo "::error::CLAUDE.md does not mention 'currently $V'"; FAIL=1; }
           grep -q "## \[$V\]" CHANGELOG.md || { echo "::error::CHANGELOG.md missing entry for [$V]"; FAIL=1; }

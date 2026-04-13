@@ -66,10 +66,15 @@ python3 -c "import py_compile; py_compile.compile('mcp-server.py', doraise=True)
 
 **VERSION** (currently 2.1.0) — change ALL of these together:
 - `bingo_core/__init__.py` — source of truth
-
 - `mcp-server.py` — `"version"` in initialize response
+- `package.json` — npm version
 - `contrib/homebrew/bingo-light.rb` — tar.gz URL
+- `CLAUDE.md` — "currently X.X.X" (2 places)
 - `CHANGELOG.md` — must have a matching `## [x.x.x]` entry
+
+All of these are **enforced by CI** (`sync-check` job). Push will fail if any are out of sync.
+
+**Release**: Push a tag `git tag v2.1.0 && git push --tags` → CI auto-publishes GitHub Release + PyPI + npm.
 
 **MCP tool count** (currently 29) — change ALL of these together:
 - `mcp-server.py` TOOLS array — source of truth
