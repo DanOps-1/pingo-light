@@ -79,14 +79,14 @@ All of these are **enforced by CI** (`sync-check` job). Push will fail if any ar
 **MCP tool count** (currently 29) — change ALL of these together:
 - `mcp-server.py` TOOLS array — source of truth
 - `README.md` — badge + body text (4+ places)
-- `README.zh-CN.md` — badge + body text (4+ places)
+- `README.en.md` — badge + body text (4+ places)
 - `docs/getting-started.md` — tool count
 - `install.sh` — display text
 - `tests/test.sh` section 15 — count assertion
 
 
 
-**README.md ↔ README.zh-CN.md** — parallel documents. Structural changes must be mirrored: badges, features, comparison table, install methods, MCP tool table, project ecosystem.
+**README.md ↔ README.en.md** — parallel documents. Structural changes must be mirrored: badges, features, comparison table, install methods, MCP tool table, project ecosystem.
 
 ## When adding a new command
 
@@ -94,7 +94,7 @@ All of these are **enforced by CI** (`sync-check` job). Push will fail if any ar
 2. `bingo-light` — add argparse + dispatch + **dedicated formatter** (not `_format_generic`)
 3. `completions/*.bash`, `.zsh`, `.fish` — add to ALL three completion files
 4. `docs/llms.txt` — add to command reference
-5. `README.md` + `README.zh-CN.md` — add to Command Reference
+5. `README.md` + `README.en.md` — add to Command Reference
 6. Tests — add to `test.sh` or `test_core.py`
 
 ## When adding a new MCP tool

@@ -17,7 +17,7 @@
 
 | Language | File | Maintainer |
 |----------|------|------------|
-| English | README.md | @DanOps-1 |
-| Chinese | README.zh-CN.md | @DanOps-1 |
+| Chinese | README.md (default) | @DanOps-1 |
+| English | README.en.md | @DanOps-1 |
 
 Translation PRs are welcome! We prioritize: Japanese, Korean, Spanish.

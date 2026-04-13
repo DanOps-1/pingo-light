@@ -61,7 +61,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - FAQ section in README (7 common questions)
 - Comparison table vs git rebase / quilt / stacked diffs
 - Animated terminal demo SVG (docs/demo.svg)
-- Separate README.zh-CN.md (full Chinese README with language switcher)
+- Separate Chinese/English READMEs with language switcher (Chinese is default)
 - ShellCheck job in CI pipeline (separate from tests)
 - GitHub Discussions enabled
 - Release assets (bingo-light, mcp-server.py, install.sh)

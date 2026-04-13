@@ -102,7 +102,7 @@ jobs:
           N=$(python3 -c "import re; print(len(re.findall(r'\"name\":\s*\"bingo_', open('mcp-server.py').read())))")
           echo "Actual MCP tools: $N"
           FAIL=0
-          for f in README.md README.zh-CN.md; do
+          for f in README.md README.en.md; do
             if ! grep -q "${N}_tools\|${N}.*tool\|${N} 个工具" "$f"; then
               echo "::error::$f does not mention $N tools"; FAIL=1
             fi
@@ -112,11 +112,11 @@ jobs:
           grep -q "$N tools" install.sh || { echo "::error::install.sh tool count mismatch"; FAIL=1; }
           [ "$FAIL" = "0" ] || exit 1
 
-      - name: README.zh-CN.md required sections
+      - name: README.md (zh-CN) required sections
         run: |
-          # These sections MUST exist in zh-CN (mapped from EN equivalents)
+          # README.md is the Chinese version (primary). Check required sections.
           FAIL=0
-          require() { grep -q "^## $1" README.zh-CN.md || { echo "::error::README.zh-CN.md missing section: ## $1"; FAIL=1; }; }
+          require() { grep -q "^## $1" README.md || { echo "::error::README.md missing section: ## $1"; FAIL=1; }; }
           require "快速开始"
           require "安装"
           require "功能特性"
