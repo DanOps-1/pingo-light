@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.0] - 2026-04-13
+
+### Added
+- **`bingo-light setup`**: Interactive setup wizard with clack-style tree-line UI
+  - Multi-select MCP configuration for 10 AI tools (Claude Code, Cursor, Windsurf, VS Code/Copilot, Cline, Roo Code, Zed, Gemini CLI, Amazon Q, Claude Desktop)
+  - Multi-select skill/instruction installation for 6 platforms (Claude Code, Windsurf, Continue, Cline, Roo Code, Gemini CLI)
+  - Shell completions auto-install (bash/zsh/fish)
+- **pip distribution**: `pip install bingo-light` (published to PyPI)
+- **npm distribution**: `npm install -g bingo-light` with postinstall setup (published to npm)
+- **Docker support**: Dockerfile for CLI and MCP server usage
+- `/bingo` skill now uses correct YAML frontmatter (`name`, `description`, `allowed-tools`)
+
+### Changed
+- `install.sh` rewritten: POSIX `#!/bin/sh`, TTY-aware colors, `--help`/`--yes`/`--bin-dir` flags, prerequisite checks, `{ }` curl pipe safety wrapper, delegates config to `bingo-light setup`
+- README install sections updated: pip/npm as primary, brew/docker/curl/source as alternatives
+
 ## [2.0.0] - 2026-04-12
 
 ### Changed

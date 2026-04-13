@@ -824,8 +824,8 @@ class TestRepo(unittest.TestCase):
             shutil.rmtree(tmpconfig, ignore_errors=True)
 
     def test_version_constant(self):
-        """VERSION should be 2.0.0."""
-        self.assertEqual(VERSION, "2.0.0")
+        """VERSION should be 2.1.0."""
+        self.assertEqual(VERSION, "2.1.0")
 
 
 class TestDataClasses(unittest.TestCase):

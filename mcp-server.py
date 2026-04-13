@@ -754,7 +754,7 @@ def main():
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "bingo-light",
-                    "version": "2.0.0",
+                    "version": "2.1.0",
                 },
             }))
 
