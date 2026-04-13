@@ -1,0 +1,13 @@
+include bingo-light
+include mcp-server.py
+include LICENSE
+include README.md
+include pyproject.toml
+recursive-include bingo_core *.py
+recursive-include completions *
+prune tests
+prune contrib
+prune docs
+prune bin
+prune .github
+prune .claude
