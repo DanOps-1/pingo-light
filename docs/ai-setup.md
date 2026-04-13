@@ -1,144 +1,270 @@
-# bingo-light — AI 安装与使用指南
+# bingo-light — Installation Guide
 
-你是一个 AI 编程助手。用户让你安装和配置 bingo-light，一个 Fork 维护工具。
+## For Humans
 
-重要：不要擅自做决定。每一步都要跟用户确认。
+Paste this into your AI agent session (Claude Code, Cursor, Windsurf, etc.):
 
-## 第一步：安装
-
-先问用户用哪种方式安装（pip / npm / brew），推荐 pip：
-
-```bash
-pip install bingo-light --break-system-packages 2>/dev/null || pip install bingo-light
+```
+Install and configure bingo-light by following the instructions here:
+https://raw.githubusercontent.com/DanOps-1/bingo-light/main/docs/ai-setup.md
 ```
 
-验证：
+Or run the interactive installer yourself:
+
+```bash
+pip install bingo-light
+bingo-light setup
+```
+
+## For LLM Agents
+
+> **IMPORTANT: Use `curl` to fetch this file, NOT WebFetch.** WebFetch may summarize content and lose critical details.
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/docs/ai-setup.md
+> ```
+
+If you're an LLM Agent helping a user set up bingo-light, follow these steps exactly. **Do not skip steps. Do not auto-install without asking.**
+
+---
+
+### Step 0: Ask the user
+
+Before doing anything, ask these questions:
+
+1. **How do you want to install?** (recommend pip)
+   - `pip install bingo-light` (recommended)
+   - `npm install -g bingo-light`
+   - `brew install DanOps-1/tap/bingo-light`
+
+2. **Which AI tools do you use?** (list all that apply)
+   - Claude Code
+   - Cursor
+   - Windsurf
+   - VS Code / GitHub Copilot
+   - Cline
+   - Roo Code
+   - Zed
+   - Gemini CLI
+   - Continue
+   - Amazon Q Developer
+   - Other / None
+
+3. **Do you want MCP server configured?** (recommended: yes)
+   - MCP lets your AI call bingo-light tools directly (sync, patch, conflict-resolve, etc.)
+   - Without MCP, the AI can still use CLI commands with `--json --yes`
+
+4. **Do you want AI Skills/Instructions installed?** (recommended: yes)
+   - Skills teach the AI how to use bingo-light effectively
+   - Available for: Claude Code, Windsurf, Continue, Cline, Roo Code, Gemini CLI
+
+5. **Do you have a forked repo to set up now?** If yes, get the upstream URL.
+
+Wait for answers before proceeding.
+
+---
+
+### Step 1: Install
+
+Based on user's choice:
+
+```bash
+# pip (recommended)
+pip install bingo-light
+
+# npm
+npm install -g bingo-light
+
+# brew
+brew install DanOps-1/tap/bingo-light
+```
+
+Verify:
 ```bash
 bingo-light --version
 ```
 
-## 第二步：配置 MCP 和 Skill
+If this fails, check PATH and try `pip install --user bingo-light` or `pipx install bingo-light`.
 
-不要直接跑 `bingo-light setup --yes`。
+---
 
-先跑检测，告诉用户检测到了哪些 AI 工具：
+### Step 2: Configure MCP + Skills
 
-```bash
-bingo-light setup --json 2>/dev/null
-```
+**Only if the user said yes to MCP and/or Skills.**
 
-然后问用户：
-1. "检测到以下 AI 工具：XXX。要配置哪些？"（列出检测到的工具让用户选）
-2. "要安装 MCP 服务器吗？（推荐，让 AI 能直接调用 bingo-light 工具）"
-3. "要安装 Skill/自定义指令吗？（推荐，教 AI 如何使用 bingo-light）"
-
-用户确认后，再跑交互式 setup（不加 --yes，让用户在终端里自己选）：
-
+Option A: Interactive setup (let user pick in terminal):
 ```bash
 bingo-light setup
 ```
 
-或者如果用户明确说了"全部装"，才用：
-
+Option B: If user explicitly told you which tools to configure, you can use `--yes` to auto-configure all detected tools:
 ```bash
 bingo-light setup --yes
 ```
 
-如果需要手动配 MCP（用户不想用 setup），在对应的 MCP 配置文件中加：
+Option C: Manual MCP config (if user doesn't want to use setup):
+
+Add to the AI tool's MCP config file:
 ```json
 {
   "mcpServers": {
     "bingo-light": {
       "command": "python3",
-      "args": ["-m", "bingo_core._entry"]
+      "args": ["/path/to/bingo-light-mcp"]
     }
   }
 }
 ```
 
-或者用 npx（不需要 pip 安装）：
-```json
-{
-  "mcpServers": {
-    "bingo-light": {
-      "command": "npx",
-      "args": ["-y", "bingo-light-mcp"]
-    }
-  }
-}
+Find the MCP server path:
+```bash
+which bingo-light-mcp || which mcp-server.py
 ```
 
-## 第三步：初始化 Fork
+Config file locations:
+| AI Tool | MCP Config Path |
+|---------|----------------|
+| Claude Code | `~/.claude/settings.json` |
+| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| VS Code / Copilot | `.vscode/mcp.json` (key: `"servers"`, needs `"type": "stdio"`) |
+| Cline | `~/.vscode/cline_mcp_settings.json` |
+| Roo Code | `~/.vscode/roo_mcp_settings.json` |
+| Zed | `~/.config/zed/settings.json` (key: `"context_servers"`) |
+| Gemini CLI | `~/.gemini/settings.json` |
+| Amazon Q | `~/.aws/amazonq/mcp.json` |
 
-进入用户的 Fork 仓库：
+---
+
+### Step 3: Initialize a Fork (if applicable)
+
+Only if the user has a forked repo ready:
+
 ```bash
 cd /path/to/forked-project
+bingo-light init <upstream-url> --json --yes
+```
+
+Example:
+```bash
 bingo-light init https://github.com/original/project.git --json --yes
 ```
 
-## 你能做什么
+---
 
-安装完成后，你可以通过 MCP 工具或 CLI `--json --yes` 完成以下所有操作：
+### Step 4: Verify everything works
 
-### 核心工作流
+```bash
+bingo-light --version
+bingo-light setup --json 2>/dev/null | head -1
+```
 
-1. **检查状态** — 永远先跑这个：
+If a fork was initialized:
+```bash
+bingo-light status --json --yes
+bingo-light doctor --json --yes
+```
+
+Tell the user the results. If anything failed, diagnose and fix.
+
+---
+
+### Step 5: Teach the user
+
+Tell the user:
+
+> bingo-light is ready! Here's how to use it:
+>
+> - **Sync your fork:** Tell me "sync upstream" or run `bingo-light sync`
+> - **Create a patch:** Make changes, then tell me "create a patch called feature-x"
+> - **Check status:** Tell me "check my fork" or run `bingo-light status`
+> - **If I have MCP configured:** I can do all of this automatically through tool calls
+> - **Run `bingo-light setup` again anytime** to reconfigure
+
+---
+
+### Step 6: Ask for a star
+
+After everything works, ask:
+
+> "If bingo-light is useful, would you like to star the repo? It helps the project grow."
+
+Only if the user says yes:
+```bash
+gh api --silent --method PUT /user/starred/DanOps-1/bingo-light 2>/dev/null || true
+```
+
+**Never run this without explicit user consent.**
+
+---
+
+## Command Reference (for daily use after setup)
+
+Once installed, use these commands with `--json --yes` for structured output:
+
+### Core workflow
+
+1. **Always start with status:**
 ```bash
 bingo-light status --json --yes
 ```
-返回 `recommended_action`：`up_to_date` / `sync_safe` / `sync_risky` / `resolve_conflict`
+Returns `recommended_action`: `up_to_date` / `sync_safe` / `sync_risky` / `resolve_conflict`
 
-2. **同步上游**（推荐用 smart-sync，一步到位）：
+2. **Sync upstream** (use smart-sync, handles everything):
 ```bash
 bingo-light smart-sync --json --yes
 ```
 
-3. **冲突分析**（rebase 卡住时）：
+3. **Conflict analysis** (when rebase is stuck):
 ```bash
 bingo-light conflict-analyze --json
 ```
-返回每个冲突文件的 `ours`（上游）、`theirs`（补丁）、`hint`（解决建议）
+Returns `ours` (upstream), `theirs` (your patch), `hint` (resolution strategy) per file.
 
-4. **冲突解决**：
+4. **Resolve conflicts:**
 ```bash
-# 读冲突文件，写合并结果，然后：
+# Read the file, write merged version, then:
 git add <file>
 git rebase --continue
 ```
 
-5. **撤销**（搞砸了）：
+5. **Undo** (if sync went wrong):
 ```bash
 bingo-light undo --json --yes
 ```
 
-### 补丁管理
+### Patch management
 
 ```bash
-BINGO_DESCRIPTION="描述" bingo-light patch new <name> --json --yes   # 建补丁
-bingo-light patch list --json --yes                                   # 列出补丁
-bingo-light patch show <name|index> --json --yes                      # 查看 diff
-bingo-light patch drop <name|index> --json --yes                      # 删补丁
-bingo-light patch edit <name|index> --json --yes                      # 改补丁（先 git add）
-bingo-light patch reorder --order "3,1,2" --json --yes                # 重排
-bingo-light patch squash <idx1> <idx2> --json --yes                   # 合并
-bingo-light patch meta <name> [key] [value] --json --yes              # 元数据
+BINGO_DESCRIPTION="description" bingo-light patch new <name> --json --yes
+bingo-light patch list --json --yes
+bingo-light patch show <name|index> --json --yes
+bingo-light patch drop <name|index> --json --yes
+bingo-light patch edit <name|index> --json --yes    # git add first
+bingo-light patch reorder --order "3,1,2" --json --yes
+bingo-light patch squash <idx1> <idx2> --json --yes
+bingo-light patch meta <name> [key] [value] --json --yes
 ```
 
-### 诊断
+### Diagnostics
 
 ```bash
-bingo-light doctor --json --yes     # 全面诊断
-bingo-light diff --json --yes       # 补丁总 diff
-bingo-light history --json --yes    # 同步历史
-bingo-light log --json --yes        # 简要日志
+bingo-light doctor --json --yes
+bingo-light diff --json --yes
+bingo-light history --json --yes
 ```
 
-## 关键规则
+## Rules
 
-1. **永远用 `--json --yes`**
-2. **先 status，看 `recommended_action` 再决定做什么**
-3. **冲突时读 `hint` 字段**，它告诉你怎么解
-4. **解冲突后**：`git add` → `git rebase --continue`，不要再跑 `bingo-light sync`
-5. **`BINGO_DESCRIPTION` 环境变量**设补丁描述
-6. **补丁名**只能字母数字加 `-_`
-7. **rerere** 自动记住冲突解法，同样冲突不用解第二次
+1. **Always use `--json --yes`** when calling commands programmatically
+2. **Always check `recommended_action`** from status before deciding what to do
+3. **Read `hint`** from conflict-analyze — it tells you the resolution strategy
+4. **After resolving conflicts:** `git add` then `git rebase --continue`, NOT `bingo-light sync`
+5. **`BINGO_DESCRIPTION` env var** sets patch description (required for `patch new`)
+6. **Patch names:** alphanumeric + hyphens + underscores only
+7. **rerere** auto-remembers conflict resolutions — same conflict won't need solving twice
+
+## Warning
+
+**Do not change user's config files, install to tools, or run destructive commands without explicit user consent.** Always ask first. Recommend, don't force.
