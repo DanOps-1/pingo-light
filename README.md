@@ -47,47 +47,66 @@ GitHub 的 "Sync fork" 按钮？你一改代码它就废了。手动 `git rebase
 
 ## 快速开始
 
-```bash
-# 安装（任选一种）
-pip install bingo-light             # Python
-npm install -g bingo-light          # Node.js
-brew install DanOps-1/tap/bingo-light  # Homebrew
-
-# 初始化 Fork 追踪
-cd my-forked-project
-bingo-light init https://github.com/original/project.git
-
-# 改代码，创建命名补丁
-vim src/feature.py
-bingo-light patch new my-feature
-
-# 上游有更新？一句话同步
-bingo-light sync
+```console
+$ pip install bingo-light && bingo-light setup
 ```
 
-就这么简单。补丁永远干净地叠在最新上游之上。
+```console
+$ cd my-forked-project
+$ bingo-light init https://github.com/original/project.git
+✓ Tracking original/project.git (branch: main)
+
+$ bingo-light patch new my-feature
+✓ Patch 'my-feature' created
+
+$ bingo-light sync
+✓ 12 commit(s) integrated, 1 patch(es) rebased
+```
+
+> [!TIP]
+> 所有命令加 `--json` 输出结构化数据，加 `--yes` 跳过确认。AI 和脚本直接消费。
+
+---
 
 ## 演示
 
-### 日常操作：初始化 → 建补丁 → 同步
+<table>
+<tr>
+<td width="50%">
+
+### 日常操作
+
+初始化 → 建补丁 → 同步上游
 
 <p align="center">
-  <img src="docs/demo.svg" alt="bingo-light 基本演示" width="850">
+  <img src="docs/demo.svg" alt="bingo-light 基本演示" width="100%">
 </p>
 
-### 冲突处理：同步 → 分析 → 搞定
+</td>
+<td width="50%">
+
+### 冲突解决
+
+同步 → AI 分析 → 自动修复
 
 <p align="center">
-  <img src="docs/demo-conflict.svg" alt="bingo-light 冲突解决演示" width="850">
+  <img src="docs/demo-conflict.svg" alt="bingo-light 冲突解决演示" width="100%">
 </p>
 
-> AI 调 `conflict-analyze --json` 拿到双方代码，写好合并结果，rebase 自动继续。全程零人工。
+</td>
+</tr>
+</table>
 
-### AI 拿到的是结构化数据
+> [!NOTE]
+> AI 调 `conflict-analyze --json` 拿到双方代码和解决提示，写好合并结果，rebase 自动继续。全程零人工。
 
-```
-$ bingo-light status --json
-```
+---
+
+### `--json` 输出：AI 直接消费
+
+<details open>
+<summary><b>Fork 状态</b> — <code>bingo-light status --json</code></summary>
+
 ```json
 {
   "ok": true,
@@ -102,11 +121,11 @@ $ bingo-light status --json
 }
 ```
 
-### 冲突分析（AI 直接消费）
+</details>
 
-```
-$ bingo-light conflict-analyze --json
-```
+<details>
+<summary><b>冲突分析</b> — <code>bingo-light conflict-analyze --json</code></summary>
+
 ```json
 {
   "rebase_in_progress": true,
@@ -123,67 +142,91 @@ $ bingo-light conflict-analyze --json
 }
 ```
 
+</details>
+
+<details>
+<summary><b>AI 全自动解冲突</b> — Claude Code 实际工作流</summary>
+
+```
+你: "同步上游，冲突帮我修了。"
+
+Claude Code:
+  1. bingo_status(cwd)            → 落后 47 commit，risk: core.c
+  2. bingo_sync(cwd, dry_run)     → 预判 1 个冲突
+  3. bingo_sync(cwd)              → rebase 卡在冲突
+  4. bingo_conflict_analyze()     → 拿到双方代码 + 提示
+  5. 读两边，写合并结果
+  6. bingo_conflict_resolve(file) → 搞定
+  7. bingo_status(cwd)            → 0 落后，补丁干净 ✓
+```
+
+</details>
+
+### 交互式 Setup
+
+```console
+$ bingo-light setup
+
+  ◆  bingo-light setup  v2.1.1
+  │
+  ◆  MCP Server
+  │  Connect bingo-light tools to your AI coding assistants
+  │
+  │  › ■ Claude Code        ~/.claude/settings.json
+  │    ■ Cursor              ~/.cursor/mcp.json
+  │    □ Windsurf            (not detected)
+  │    ■ VS Code / Copilot   ~/.vscode/mcp.json
+  │
+  ◆  Skills / Custom Instructions
+  │  Teach your AI how to use bingo-light
+  │
+  │    ■ Claude Code         ~/.claude/commands/bingo.md
+  │    ■ Continue            ~/.continue/rules/bingo.md
+  │
+  └  5 MCP + 2 skill(s) configured — ready to go!
+```
+
+> [!TIP]
+> 支持 10 个 AI 工具的 MCP 配置 + 6 个平台的 Skill 安装。方向键多选，一次配完。
+
 ## 安装
 
-装完跑 `bingo-light setup`，交互式配好 MCP 和 AI Skill（Claude Code、Cursor、Windsurf、VS Code/Copilot、Gemini CLI 等一键选配）。
+装完跑 `bingo-light setup`，交互式配好 MCP + Skill。
 
-### pip / pipx
+| 方式 | 命令 |
+|------|------|
+| **pip** | `pip install bingo-light && bingo-light setup` |
+| **npm** | `npm install -g bingo-light && bingo-light setup` |
+| **npx** | `npx bingo-light setup` |
+| **Homebrew** | `brew install DanOps-1/tap/bingo-light && bingo-light setup` |
 
+<details>
+<summary><b>更多安装方式</b>（Docker / Shell / 源码）</summary>
+
+**Docker**
 ```bash
-pip install bingo-light        # 或: pipx install bingo-light
-bingo-light setup              # 选配 AI 工具
-```
-
-### npm / npx
-
-```bash
-npm install -g bingo-light     # 全局安装
-bingo-light setup
-
-# 或 npx 免装：
-npx bingo-light setup
-```
-
-MCP 客户端直接用 npx：
-```json
-{"command": "npx", "args": ["-y", "bingo-light-mcp"]}
-```
-
-### Homebrew
-
-```bash
-brew install DanOps-1/tap/bingo-light
-bingo-light setup
-```
-
-### Docker
-
-```bash
-# CLI
 docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light status
-
-# MCP 服务器（stdio）
 docker run --rm -i -v "$PWD:/repo" -w /repo ghcr.io/danops-1/bingo-light mcp-server.py
 ```
 
-### Shell 安装器
-
+**Shell 一键安装**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DanOps-1/bingo-light/main/install.sh | sh
-
-# 非交互模式（CI / Docker）
-curl -fsSL .../install.sh | sh -s -- --yes
+# CI / Docker: curl -fsSL .../install.sh | sh -s -- --yes
 ```
 
-### 从源码安装
-
+**从源码**
 ```bash
 git clone https://github.com/DanOps-1/bingo-light.git
-cd bingo-light
-make install && bingo-light setup
+cd bingo-light && make install && bingo-light setup
 ```
 
-**依赖：** Python 3.8+ / git 2.20+，没了。
+</details>
+
+> [!NOTE]
+> **依赖：** Python 3.8+ / git 2.20+，没了。零 pip 依赖。
+>
+> MCP 客户端可直接用 npx：`{"command": "npx", "args": ["-y", "bingo-light-mcp"]}`
 
 ## 功能特性
 
@@ -349,32 +392,14 @@ bingo-light help                             打印帮助
 
 ## 集成指南
 
-### Claude Code (MCP)
+| 集成方式 | 适用场景 | 示例 |
+|---------|---------|------|
+| **MCP** (29 tools) | Claude Code / Cursor / Windsurf 等 | `bingo-light setup` 自动配 |
+| **CLI `--json`** | 任何能跑 shell 的 AI | `bingo-light sync --json --yes` |
+| **Skill** | Claude Code / Continue / Gemini 等 | `/bingo` 教 AI 用法 |
 
-MCP 配好后，Claude Code 全程接管：
-
-```
-你: "同步上游，冲突帮我修了。"
-
-Claude Code:
-  1. bingo_status(cwd)        → 落后 47 commit，risk: core.c
-  2. bingo_sync(cwd, dry_run) → 预判 1 个冲突
-  3. bingo_sync(cwd)          → rebase 卡在冲突
-  4. bingo_conflict_analyze() → 拿到双方代码 + 提示
-  5. 读两边，写合并结果
-  6. bingo_conflict_resolve(cwd, file, content) → 搞定
-  7. bingo_status(cwd)        → 0 落后，补丁干净
-```
-
-### Aider / CLI 代理
-
-```bash
-bingo-light status --json          # 解析 Fork 状态
-bingo-light sync --yes             # 非交互同步
-bingo-light conflict-analyze --json # 结构化冲突数据
-```
-
-### 自定义 Python 代理
+<details>
+<summary><b>自定义 Python 代理</b></summary>
 
 ```python
 import subprocess, json
@@ -393,8 +418,9 @@ if status["behind"] > 0:
         analysis = bingo("conflict-analyze")
         for c in analysis["conflicts"]:
             resolved = my_llm_resolve(c["ours"], c["theirs"], c["hint"])
-            # 通过 CLI 或 MCP 写入解决内容
 ```
+
+</details>
 
 ## 配置
 
