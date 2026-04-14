@@ -197,7 +197,7 @@ Claude Code:
 ```console
 $ bingo-light setup
 
-  ◆  bingo-light setup  v2.1.1
+  ◆  bingo-light setup  v2.1.2
   │
   ◆  MCP Server
   │  Connect bingo-light tools to your AI coding assistants

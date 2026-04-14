@@ -37,7 +37,7 @@ npm install -g bingo-light
 brew install DanOps-1/tap/bingo-light
 ```
 
-Verify: `bingo-light --version` should print `bingo-light 2.1.1` or newer.
+Verify: `bingo-light --version` should print `bingo-light 2.1.2` or newer.
 
 ### Step 2: Configure MCP + Skills
 
