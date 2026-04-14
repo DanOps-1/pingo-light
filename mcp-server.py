@@ -469,6 +469,86 @@ TOOLS = [
             "required": ["cwd"]
         }
     },
+    # ── Dependency Patching Tools ─────────────────────────────────────────
+    {
+        "name": "bingo_dep_patch",
+        "description": (
+            "Create a patch for a modified npm/pip dependency. After modifying files in "
+            "node_modules/ or site-packages/, call this to generate a .patch file. "
+            "The patch survives npm install / pip install via `bingo_dep_apply`."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Project directory"},
+                "package": {"type": "string", "description": "Package name (e.g. 'lodash', 'requests')"},
+                "patch_name": {"type": "string", "description": "Optional patch name"},
+                "description": {"type": "string", "description": "What this patch fixes"}
+            },
+            "required": ["cwd", "package"]
+        }
+    },
+    {
+        "name": "bingo_dep_apply",
+        "description": (
+            "Re-apply all dependency patches after npm install / pip install. "
+            "Call this as a postinstall hook or after any package manager update."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Project directory"},
+                "package": {"type": "string", "description": "Optional: apply only this package's patches"}
+            },
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "bingo_dep_status",
+        "description": (
+            "Show health of all dependency patches. Reports version mismatches "
+            "(upstream updated but patches were generated against old version)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "description": "Project directory"}},
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "bingo_dep_sync",
+        "description": (
+            "After npm update / pip install --upgrade, re-apply patches and detect conflicts. "
+            "Returns ok if all patches apply cleanly, or conflict details if patches broke."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "description": "Project directory"}},
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "bingo_dep_list",
+        "description": "List all dependency patches across all tracked packages.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "description": "Project directory"}},
+            "required": ["cwd"]
+        }
+    },
+    {
+        "name": "bingo_dep_drop",
+        "description": "Remove a dependency patch or all patches for a package.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "description": "Project directory"},
+                "package": {"type": "string", "description": "Package name"},
+                "patch_name": {"type": "string", "description": "Specific patch to drop (omit for all)"}
+            },
+            "required": ["cwd", "package"]
+        }
+    },
 ]
 
 # ─── Command Mapping ──────────────────────────────────────────────────────────
@@ -628,6 +708,31 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
         elif name == "bingo_workspace_status":
             return _result(repo.workspace_status())
+
+        # ── Dependency patching tools ────────────────────────────────────
+        elif name.startswith("bingo_dep_"):
+            from bingo_core.dep import DepManager
+            dm = DepManager(cwd)
+
+            if name == "bingo_dep_patch":
+                return _result(dm.patch(
+                    arguments["package"],
+                    arguments.get("patch_name", ""),
+                    arguments.get("description", ""),
+                ))
+            elif name == "bingo_dep_apply":
+                return _result(dm.apply(arguments.get("package", "")))
+            elif name == "bingo_dep_status":
+                return _result(dm.status())
+            elif name == "bingo_dep_sync":
+                return _result(dm.sync())
+            elif name == "bingo_dep_list":
+                return _result(dm.list_patches())
+            elif name == "bingo_dep_drop":
+                return _result(dm.drop(
+                    arguments["package"],
+                    arguments.get("patch_name", ""),
+                ))
 
         else:
             return {

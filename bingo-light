@@ -517,6 +517,72 @@ def _format_setup(result: dict) -> str:
     return ""
 
 
+def _format_dep(result: dict) -> str:
+    """Format dep subcommand results."""
+    if result.get("ok") is False:
+        return f"{_c(RED, 'x')} {result.get('error', 'Failed')}"
+
+    lines = []
+
+    # dep patch result
+    if "patch" in result and "package" in result:
+        lines.append(f"{_c(GREEN, '✓')} {result['package']}@{result.get('version', '?')} "
+                     f"→ {result['patch']} ({result.get('files_changed', 0)} file(s))")
+        return "\n".join(lines)
+
+    # dep status
+    if "packages" in result and "total_patches" in result:
+        pkgs = result["packages"]
+        if not pkgs:
+            return f"{_c(DIM, '⊘')} No dependency patches tracked"
+        lines.append(f"  {_c(BOLD, 'Dependency Patches:')}")
+        lines.append("")
+        for p in pkgs:
+            status_color = GREEN if p["status"] == "ok" else YELLOW
+            icon = "✓" if p["status"] == "ok" else "!" if p["status"] == "version_mismatch" else "?"
+            lines.append(f"  {_c(status_color, icon)} {p['package']}  "
+                         f"{_c(DIM, p['manager'])}  "
+                         f"{p['patched_version']}"
+                         f"{' → ' + p['installed_version'] if p['status'] == 'version_mismatch' else ''}  "
+                         f"({p['patches']} patch(es))")
+        lines.append("")
+        return "\n".join(lines)
+
+    # dep list
+    if "patches" in result and isinstance(result["patches"], list):
+        patches = result["patches"]
+        if not patches:
+            return f"{_c(DIM, '⊘')} No patches"
+        for p in patches:
+            icon = _c(GREEN, "✓") if p.get("exists", True) else _c(RED, "✗")
+            desc = f"  {_c(DIM, p['description'])}" if p.get("description") else ""
+            lines.append(f"  {icon} {p['package']}/{p['patch']}  {_c(DIM, 'v' + p.get('version', '?'))}{desc}")
+        return "\n".join(lines)
+
+    # dep apply / dep sync
+    if "applied" in result or "results" in result:
+        applied = result.get("applied", 0)
+        failed = result.get("failed", 0)
+        if isinstance(applied, int):
+            lines.append(f"{_c(GREEN, '✓')} {applied} applied, {failed} failed")
+        # Show sync conflicts
+        for r in result.get("results", []):
+            pkg = r.get("package", "?")
+            status = r.get("status", "?")
+            if status == "conflict":
+                for c in r.get("conflicts", []):
+                    lines.append(f"  {_c(YELLOW, '!')} {pkg}/{c['patch']}: {c.get('error', '?')}")
+                    if c.get("hint"):
+                        lines.append(f"    {_c(DIM, c['hint'])}")
+        return "\n".join(lines)
+
+    # dep drop
+    if "dropped" in result:
+        return f"{_c(GREEN, '✓')} Dropped {result.get('package', '?')}/{result['dropped']}"
+
+    return f"{_c(GREEN, '✓')} Done"
+
+
 def _format_generic(result: dict) -> str:
     """Fallback formatter: show message or OK."""
     if result.get("ok") is False:
@@ -581,6 +647,14 @@ def show_help() -> str:
   {b}Configuration:{r}
     {cy}config{r} get|set|list             Manage configuration
     {cy}test{r}                            Run configured test suite
+
+  {b}Dependency Patching:{r}
+    {cy}dep patch{r} <package> [name]      Patch a modified npm/pip dependency
+    {cy}dep apply{r} [package]             Re-apply patches after install
+    {cy}dep sync{r}                        Re-apply patches after update, detect conflicts
+    {cy}dep status{r}                      Show patch health for all dependencies
+    {cy}dep list{r}                        List all dependency patches
+    {cy}dep drop{r} <package> [patch]      Remove a dependency patch
 
   {b}Automation:{r}
     {cy}auto-sync{r}                       Generate GitHub Actions workflow
@@ -758,6 +832,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup = sub.add_parser("setup", add_help=False)
     p_setup.add_argument("--no-completions", dest="no_completions", action="store_true")
 
+    # dep (dependency patching)
+    p_dep = sub.add_parser("dep", add_help=False)
+    dep_sub = p_dep.add_subparsers(dest="dep_command")
+
+    dp_patch = dep_sub.add_parser("patch", add_help=False)
+    dp_patch.add_argument("dep_package")
+    dp_patch.add_argument("dep_patch_name", nargs="?", default="")
+
+    dp_apply = dep_sub.add_parser("apply", add_help=False)
+    dp_apply.add_argument("dep_package", nargs="?", default="")
+
+    dep_sub.add_parser("list", add_help=False)
+
+    dep_sub.add_parser("status", add_help=False)
+
+    dep_sub.add_parser("sync", add_help=False)
+
+    dp_drop = dep_sub.add_parser("drop", add_help=False)
+    dp_drop.add_argument("dep_package")
+    dp_drop.add_argument("dep_patch_name", nargs="?", default="")
+
     # help
     sub.add_parser("help", add_help=False)
 
@@ -770,6 +865,26 @@ def build_parser() -> argparse.ArgumentParser:
 def dispatch(args: argparse.Namespace, json_mode: bool) -> Optional[dict]:
     """Dispatch a parsed command to the Repo method and return the result dict."""
     cmd = args.command
+
+    # dep doesn't need a Repo (works with package managers, not git)
+    if cmd == "dep":
+        from bingo_core.dep import DepManager
+        dm = DepManager()
+        dcmd = getattr(args, "dep_command", "")
+        if dcmd == "patch":
+            desc = os.environ.get("BINGO_DESCRIPTION", "")
+            return dm.patch(args.dep_package, args.dep_patch_name, desc)
+        if dcmd == "apply":
+            return dm.apply(getattr(args, "dep_package", "") or "")
+        if dcmd == "list":
+            return dm.list_patches()
+        if dcmd == "status":
+            return dm.status()
+        if dcmd == "sync":
+            return dm.sync()
+        if dcmd == "drop":
+            return dm.drop(args.dep_package, getattr(args, "dep_patch_name", ""))
+        return {"ok": False, "error": f"Unknown dep subcommand: {dcmd}"}
 
     # setup doesn't need a Repo (works outside git repos)
     if cmd == "setup":
@@ -959,6 +1074,7 @@ _FORMATTERS: Dict[str, Any] = {
     "undo": _format_undo,
     "smart-sync": _format_smart_sync,
     "setup": _format_setup,
+    "dep": _format_dep,
 }
 
 
