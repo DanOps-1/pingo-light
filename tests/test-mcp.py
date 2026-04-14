@@ -347,7 +347,7 @@ def test_jsonline_framing():
 
 def test_tool_smoke(fork_dir: str, upstream_dir: str):
     """Smoke test all 22 tools."""
-    section('2. Tool smoke tests (22 tools)')
+    section('2. Tool smoke tests')
 
     # Export patches first so we have .patch files for import test
     export_dir = os.path.join(fork_dir, '.bl-patches')
@@ -362,6 +362,9 @@ def test_tool_smoke(fork_dir: str, upstream_dir: str):
         ('bingo_config', {'cwd': fork_dir, 'action': 'list'}),
         ('bingo_history', {'cwd': fork_dir}),
         ('bingo_auto_sync', {'cwd': fork_dir}),
+        # dep tools (work on any directory, even without npm/pip)
+        ('bingo_dep_status', {'cwd': fork_dir}),
+        ('bingo_dep_list', {'cwd': fork_dir}),
     ]
 
     for tool_name, args in simple_tools:

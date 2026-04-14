@@ -108,7 +108,17 @@ All of these are **enforced by CI** (`sync-check` job). Push will fail if any ar
 
 1. `mcp-server.py` — add to TOOLS array + `handle_tool_call()` (direct Repo method call)
 2. Update MCP tool count in ALL files listed in "Sync points" above
-4. `tests/test-mcp.py` — add smoke test
+3. `tests/test-mcp.py` — add smoke test
+
+## When adding dep subcommands
+
+1. `bingo_core/dep.py` — add method to `DepManager`, return dict with `ok` key
+2. `bingo-light` — add argparse + dispatch + formatter in `_format_dep()`
+3. `mcp-server.py` — add `bingo_dep_*` tool + handler
+4. `completions/*.bash`, `.zsh`, `.fish` — add to dep subcommand lists
+5. `docs/ai-setup.md` — add to "Dependency patching" section
+6. `README.md` + `README.en.md` — add to Command Reference
+7. `tests/test_dep.py` — add test
 
 ## For AI agents: prefer MCP or --json
 

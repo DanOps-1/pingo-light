@@ -81,13 +81,29 @@ class TestDepNpm(unittest.TestCase):
             return "bingo-light-test-marker" in f.read()
 
     def _clean_reinstall(self):
-        """Remove node_modules and reinstall."""
+        """Remove node_modules and reinstall (without postinstall hook)."""
+        # Temporarily remove postinstall to get a clean baseline
+        pkg_json = os.path.join(self.tmpdir, "package.json")
+        with open(pkg_json) as f:
+            data = json.load(f)
+        saved_hook = data.get("scripts", {}).pop("postinstall", None)
+        with open(pkg_json, "w") as f:
+            json.dump(data, f, indent=2)
+
         nm = os.path.join(self.tmpdir, "node_modules")
         shutil.rmtree(nm, ignore_errors=True)
         subprocess.run(
             ["npm", "install"],
             cwd=self.tmpdir, capture_output=True, timeout=60,
         )
+
+        # Restore hook
+        if saved_hook:
+            with open(pkg_json) as f:
+                data = json.load(f)
+            data.setdefault("scripts", {})["postinstall"] = saved_hook
+            with open(pkg_json, "w") as f:
+                json.dump(data, f, indent=2)
 
     def _clean_patches(self):
         """Remove .bingo-deps directory."""
@@ -215,6 +231,133 @@ class TestDepNpm(unittest.TestCase):
         # Cleanup
         dm = DepManager(self.tmpdir)
         dm.drop("lodash")
+
+
+@unittest.skipUnless(_has_npm(), "npm not available")
+@unittest.skipUnless(_has_patch(), "patch command not available")
+class TestDepEdgeCases(unittest.TestCase):
+    """Edge case tests for dep patching."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp(prefix="bingo-dep-edge-")
+        subprocess.run(["npm", "init", "-y"], cwd=cls.tmpdir, capture_output=True)
+        subprocess.run(
+            ["npm", "install", "lodash"],
+            cwd=cls.tmpdir, capture_output=True, timeout=60,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _clean(self):
+        bd = os.path.join(self.tmpdir, ".bingo-deps")
+        if os.path.isdir(bd):
+            shutil.rmtree(bd)
+
+    def test_multiple_patches_per_package(self):
+        """Multiple patches on the same package stack correctly."""
+        self._clean()
+        dm = DepManager(self.tmpdir)
+
+        # First patch: modify lodash.js
+        path = os.path.join(self.tmpdir, "node_modules", "lodash", "lodash.js")
+        with open(path, "a") as f:
+            f.write("\n// patch-one\n")
+        r1 = dm.patch("lodash", "first-fix")
+        self.assertTrue(r1["ok"])
+
+        # Second patch: modify a different file
+        fp2 = os.path.join(self.tmpdir, "node_modules", "lodash", "lodash.min.js")
+        if os.path.isfile(fp2):
+            with open(fp2, "a") as f:
+                f.write("\n// patch-two\n")
+            r2 = dm.patch("lodash", "second-fix")
+            self.assertTrue(r2["ok"])
+
+            # List shows both
+            lst = dm.list_patches("lodash")
+            self.assertEqual(len(lst["patches"]), 2)
+
+        self._clean()
+
+    def test_postinstall_hook_idempotent(self):
+        """Calling patch twice doesn't duplicate the postinstall hook."""
+        self._clean()
+        dm = DepManager(self.tmpdir)
+
+        path = os.path.join(self.tmpdir, "node_modules", "lodash", "lodash.js")
+        with open(path, "a") as f:
+            f.write("\n// idem-test\n")
+        dm.patch("lodash", "idem-1")
+
+        # Read package.json postinstall
+        with open(os.path.join(self.tmpdir, "package.json")) as f:
+            data = json.load(f)
+        hook1 = data.get("scripts", {}).get("postinstall", "")
+
+        # Patch again
+        with open(path, "a") as f:
+            f.write("\n// idem-test-2\n")
+        dm.patch("lodash", "idem-2")
+
+        with open(os.path.join(self.tmpdir, "package.json")) as f:
+            data2 = json.load(f)
+        hook2 = data2.get("scripts", {}).get("postinstall", "")
+
+        # Hook should not be duplicated
+        self.assertEqual(hook1, hook2)
+        self.assertEqual(hook2.count("dep apply"), 1)
+
+        self._clean()
+        # Restore original package.json
+        data2.get("scripts", {}).pop("postinstall", None)
+        with open(os.path.join(self.tmpdir, "package.json"), "w") as f:
+            json.dump(data2, f, indent=2)
+
+    def test_drop_all_then_status(self):
+        """Dropping all patches leaves clean state."""
+        self._clean()
+        dm = DepManager(self.tmpdir)
+
+        path = os.path.join(self.tmpdir, "node_modules", "lodash", "lodash.js")
+        with open(path, "a") as f:
+            f.write("\n// drop-test\n")
+        dm.patch("lodash", "to-drop")
+        dm.drop("lodash")
+
+        st = dm.status()
+        self.assertEqual(st["total_packages"], 0)
+        self.assertEqual(st["total_patches"], 0)
+
+    def test_apply_missing_package(self):
+        """Apply when tracked package is uninstalled reports error."""
+        self._clean()
+        dm = DepManager(self.tmpdir)
+
+        # Create a patch config manually for a non-installed package
+        os.makedirs(os.path.join(self.tmpdir, ".bingo-deps", "patches", "fake-pkg"), exist_ok=True)
+        with open(os.path.join(self.tmpdir, ".bingo-deps", "patches", "fake-pkg", "test.patch"), "w") as f:
+            f.write("--- a/fake-pkg/index.js\n+++ b/fake-pkg/index.js\n")
+        config = dm._load_config()
+        config["packages"]["fake-pkg"] = {
+            "version": "1.0.0", "manager": "npm", "patches": ["test.patch"]
+        }
+        dm._save_config()
+
+        result = dm.apply("fake-pkg")
+        self.assertFalse(result["ok"])
+
+        self._clean()
+
+    def test_sync_empty(self):
+        """Sync with no tracked packages is ok."""
+        self._clean()
+        dm = DepManager(self.tmpdir)
+        result = dm.sync()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total_conflicts"], 0)
 
 
 class TestDepManager(unittest.TestCase):

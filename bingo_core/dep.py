@@ -154,6 +154,53 @@ class DepManager:
                 return b
         return None
 
+    # ─── Postinstall Hook ─────────────────────────────────────────────────
+
+    def _ensure_postinstall_hook(self, backend: DepBackend) -> Optional[str]:
+        """Add 'bingo-light dep apply' to package.json postinstall if npm project.
+
+        Returns a message if hook was added, None otherwise.
+        """
+        if backend.name != "npm":
+            return None
+
+        pkg_json_path = os.path.join(self.cwd, "package.json")
+        if not os.path.isfile(pkg_json_path):
+            return None
+
+        try:
+            with open(pkg_json_path) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+        scripts = data.setdefault("scripts", {})
+        # Find bingo-light binary — use absolute path for reliability
+        bl_bin = shutil.which("bingo-light")
+        if bl_bin:
+            hook_cmd = f"{bl_bin} dep apply"
+        else:
+            # Fallback: npx always works if npm is available
+            hook_cmd = "npx --yes bingo-light dep apply"
+
+        existing = scripts.get("postinstall", "")
+        if hook_cmd in existing:
+            return None  # already present
+
+        if existing:
+            scripts["postinstall"] = f"{existing} && {hook_cmd}"
+        else:
+            scripts["postinstall"] = hook_cmd
+
+        try:
+            with open(pkg_json_path, "w") as f:
+                json.dump(data, f, indent=2)
+                f.write("\n")
+        except OSError:
+            return None
+
+        return "postinstall hook added to package.json"
+
     # ─── Patch Generation ────────────────────────────────────────────────
 
     def patch(self, package: str, patch_name: str = "",
@@ -224,8 +271,11 @@ class DepManager:
                 pkg.setdefault("descriptions", {})[patch_name] = description
             self._save_config()
 
+            # Auto-add postinstall hook on first patch
+            hook_msg = self._ensure_postinstall_hook(backend)
+
             file_count = sum(1 for line in diff_lines if line.startswith("--- "))
-            return {
+            result = {
                 "ok": True,
                 "package": package,
                 "version": version,
@@ -233,6 +283,9 @@ class DepManager:
                 "files_changed": file_count,
                 "manager": backend.name,
             }
+            if hook_msg:
+                result["hook"] = hook_msg
+            return result
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
