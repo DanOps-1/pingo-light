@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
   <br>
-  <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_Server-35_tools-blueviolet.svg" alt="MCP: 35 tools"></a>
+  <a href="#for-ai-agents"><img src="https://img.shields.io/badge/MCP_Server-49_tools-blueviolet.svg" alt="MCP: 49 tools"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-3776ab.svg" alt="Python 3.8+"></a>
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg" alt="Zero deps">
   <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
@@ -25,7 +25,7 @@ GitHub's "Sync fork" button breaks the moment you have customizations. `git reba
 
 Your patches live as a clean, named stack on top of upstream. Syncing is `bingo-light sync`. Conflicts get remembered so you never solve the same one twice. And if something goes sideways, `bingo-light undo` puts everything back in one second.
 
-Every command speaks JSON. The built-in MCP server gives AI agents 35 tools to manage your fork autonomously -- from init through conflict resolution. No human in the loop required.
+Every command speaks JSON. The built-in MCP server gives AI agents 49 tools to manage your fork autonomously -- from init through conflict resolution. No human in the loop required.
 
 ---
 
@@ -93,7 +93,7 @@ That's it. Three commands and your fork stays in sync forever.
 
 ### For AI Agents
 
-- :electric_plug: **MCP server (35 tools)** -- full fork management from init through conflict resolution.
+- :electric_plug: **MCP server (49 tools)** -- full fork management from init through conflict resolution.
 - :bar_chart: **`--json` on everything** -- every command returns structured JSON. Parse, don't scrape.
 - :mute: **`--yes` flag** -- fully non-interactive. No TTY required. No prompts. Ever.
 - :gear: **Auto-detect non-TTY** -- pipes and subprocesses trigger non-interactive mode automatically.
@@ -200,7 +200,7 @@ make install && bingo-light setup
 
 ## For AI Agents
 
-bingo-light was designed from day one for AI agents. Every command speaks JSON. The MCP server exposes 35 tools covering the full lifecycle from `init` to `conflict-resolve`. Non-interactive mode is the default when stdin is not a TTY.
+bingo-light was designed from day one for AI agents. Every command speaks JSON. The MCP server exposes 49 tools covering the full lifecycle from `init` to `conflict-resolve`. Non-interactive mode is the default when stdin is not a TTY.
 
 ### MCP setup -- Claude Code
 
@@ -234,7 +234,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 **Any MCP client** (VS Code Copilot, Cursor, custom agents): connect via stdio to `python3 mcp-server.py`.
 
-### 35 MCP Tools
+### 49 MCP Tools
 
 | Tool | Purpose |
 |------|---------|
@@ -424,7 +424,7 @@ StGit (649 stars) manages patch stacks but has no AI integration, no MCP server,
 | Handles customizations | **Yes** | **No** | Manual | Manual | Manual |
 | Conflict memory (rerere) | **Auto** | No | Manual | No | No |
 | Conflict prediction | **Yes** | No | No | No | No |
-| AI / MCP integration | **35 tools** | No | No | No | No |
+| AI / MCP integration | **49 tools** | No | No | No | No |
 | JSON output | **All commands** | No | No | No | No |
 | Non-interactive mode | **Native** | No | Partial | Partial | Partial |
 | Undo sync | **One command** | No | git reflog | Manual | Manual |
@@ -490,7 +490,7 @@ Yes. bingo-light uses standard git operations (fetch, rebase, push). It works wi
 ```
 bingo-light          CLI tool (Python 3, zero deps)
 bingo_core/          Core library package (all business logic)
-mcp-server.py        MCP server (zero-dep Python 3, 35 tools, JSON-RPC 2.0)
+mcp-server.py        MCP server (zero-dep Python 3, 49 tools, JSON-RPC 2.0)
 contrib/agent.py     Advisor agent (monitors drift, auto-syncs when safe)
 contrib/tui.py       Terminal dashboard (curses TUI, real-time monitoring)
 install.sh           Installer (--yes for CI, --help for options)

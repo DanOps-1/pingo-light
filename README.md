@@ -9,7 +9,7 @@
   <a href="https://github.com/DanOps-1/bingo-light/actions"><img src="https://github.com/DanOps-1/bingo-light/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/DanOps-1/bingo-light/releases"><img src="https://img.shields.io/github/v/release/DanOps-1/bingo-light?label=Release&color=orange" alt="Release"></a>
-  <a href="#mcp-服务器"><img src="https://img.shields.io/badge/MCP_Server-35_tools-blueviolet.svg" alt="MCP: 35 tools"></a>
+  <a href="#mcp-服务器"><img src="https://img.shields.io/badge/MCP_Server-49_tools-blueviolet.svg" alt="MCP: 49 tools"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.8+-3776ab.svg" alt="Python 3.8+"></a>
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg" alt="Zero deps">
   <a href="https://github.com/DanOps-1/bingo-light/stargazers"><img src="https://img.shields.io/github/stars/DanOps-1/bingo-light?style=social" alt="Stars"></a>
@@ -434,7 +434,7 @@ bingo-light help                             打印帮助
 
 | 集成方式 | 适用场景 | 示例 |
 |---------|---------|------|
-| **MCP** (35 tools) | Claude Code / Cursor / Windsurf 等 | `bingo-light setup` 自动配 |
+| **MCP** (49 tools) | Claude Code / Cursor / Windsurf 等 | `bingo-light setup` 自动配 |
 | **CLI `--json`** | 任何能跑 shell 的 AI | `bingo-light sync --json --yes` |
 | **Skill** | Claude Code / Continue / Gemini 等 | `/bingo` 教 AI 用法 |
 

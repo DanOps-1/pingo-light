@@ -395,5 +395,199 @@ class TestDepManager(unittest.TestCase):
             self.assertEqual(result["applied"], 0)
 
 
+class TestApplyPatchPython(unittest.TestCase):
+    """Tests for the pure-Python patch application fallback."""
+
+    def test_single_hunk(self):
+        """Apply a single-hunk patch to modify a file."""
+        from bingo_core.dep import _apply_patch_python
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create target file
+            target = os.path.join(tmpdir, "index.js")
+            with open(target, "w") as f:
+                f.write("line1\nline2\nline3\n")
+
+            # Create patch that changes line2 -> line2_modified
+            patch_path = os.path.join(tmpdir, "test.patch")
+            with open(patch_path, "w") as f:
+                f.write(
+                    "--- a/pkg/index.js\n"
+                    "+++ b/pkg/index.js\n"
+                    "@@ -1,3 +1,3 @@\n"
+                    " line1\n"
+                    "-line2\n"
+                    "+line2_modified\n"
+                    " line3\n"
+                )
+
+            ok, err = _apply_patch_python(patch_path, tmpdir)
+            self.assertTrue(ok, f"Patch failed: {err}")
+
+            with open(target) as f:
+                content = f.read()
+            self.assertIn("line2_modified", content)
+            self.assertNotIn("line2\n", content)
+
+    def test_new_file(self):
+        """Apply a patch that creates a new file."""
+        from bingo_core.dep import _apply_patch_python
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patch_path = os.path.join(tmpdir, "test.patch")
+            with open(patch_path, "w") as f:
+                f.write(
+                    "--- /dev/null\n"
+                    "+++ b/pkg/newfile.txt\n"
+                    "@@ -0,0 +1,2 @@\n"
+                    "+hello\n"
+                    "+world\n"
+                )
+
+            ok, err = _apply_patch_python(patch_path, tmpdir)
+            self.assertTrue(ok, f"Patch failed: {err}")
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "newfile.txt")))
+
+    def test_context_mismatch(self):
+        """Patch should fail if context lines don't match."""
+        from bingo_core.dep import _apply_patch_python
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "index.js")
+            with open(target, "w") as f:
+                f.write("aaa\nbbb\nccc\n")
+
+            patch_path = os.path.join(tmpdir, "test.patch")
+            with open(patch_path, "w") as f:
+                f.write(
+                    "--- a/pkg/index.js\n"
+                    "+++ b/pkg/index.js\n"
+                    "@@ -1,3 +1,3 @@\n"
+                    " xxx\n"  # wrong context
+                    "-bbb\n"
+                    "+bbb_new\n"
+                    " ccc\n"
+                )
+
+            ok, err = _apply_patch_python(patch_path, tmpdir)
+            self.assertFalse(ok)
+            self.assertIn("context mismatch", err)
+
+
+class TestOverride(unittest.TestCase):
+    """Tests for npm override management."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="bl-override-")
+        # Create package.json with overrides
+        pj = {
+            "name": "test-project",
+            "dependencies": {"lodash": "4.17.21"},
+            "overrides": {"glob": "9.0.0"},
+        }
+        with open(os.path.join(self.tmpdir, "package.json"), "w") as f:
+            json.dump(pj, f, indent=2)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_override_list(self):
+        dm = DepManager(self.tmpdir)
+        result = dm.override_list()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["overrides"][0]["package"], "glob")
+        self.assertEqual(result["overrides"][0]["version"], "9.0.0")
+
+    def test_override_add(self):
+        dm = DepManager(self.tmpdir)
+        result = dm.override_add("semver", "7.6.0", reason="CVE fix")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["field"], "overrides")
+
+        # Verify package.json was updated
+        with open(os.path.join(self.tmpdir, "package.json")) as f:
+            pj = json.load(f)
+        self.assertEqual(pj["overrides"]["semver"], "7.6.0")
+
+        # Verify tracking
+        result2 = dm.override_list()
+        semver_entry = [o for o in result2["overrides"] if o["package"] == "semver"]
+        self.assertEqual(len(semver_entry), 1)
+        self.assertEqual(semver_entry[0]["reason"], "CVE fix")
+
+    def test_override_drop(self):
+        dm = DepManager(self.tmpdir)
+        result = dm.override_drop("glob")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["dropped"])
+
+        # Verify removed from package.json
+        with open(os.path.join(self.tmpdir, "package.json")) as f:
+            pj = json.load(f)
+        self.assertNotIn("overrides", pj)
+
+    def test_override_check_no_lock(self):
+        dm = DepManager(self.tmpdir)
+        result = dm.override_check()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["overrides"][0]["status"], "unknown")
+
+
+class TestForkTracker(unittest.TestCase):
+    """Tests for fork-as-dependency tracking."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="bl-fork-")
+        pj = {
+            "name": "test-project",
+            "dependencies": {
+                "lodash": "4.17.21",
+                "my-lib": "github:testuser/my-lib#abc123",
+                "other": "git+https://github.com/someone/other.git#v1.0.0",
+            },
+            "devDependencies": {
+                "tool": "github:toolmaker/tool",
+            },
+        }
+        with open(os.path.join(self.tmpdir, "package.json"), "w") as f:
+            json.dump(pj, f, indent=2)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_fork_list(self):
+        from bingo_core.dep_fork import ForkTracker
+        ft = ForkTracker(self.tmpdir)
+        result = ft.fork_list()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 3)
+
+        names = [f["package"] for f in result["forks"]]
+        self.assertIn("my-lib", names)
+        self.assertIn("other", names)
+        self.assertIn("tool", names)
+        self.assertNotIn("lodash", names)
+
+    def test_fork_list_no_package_json(self):
+        from bingo_core.dep_fork import ForkTracker
+        with tempfile.TemporaryDirectory() as empty:
+            ft = ForkTracker(empty)
+            result = ft.fork_list()
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["count"], 0)
+
+    def test_parse_refs(self):
+        from bingo_core.dep_fork import ForkTracker
+        ft = ForkTracker(self.tmpdir)
+        result = ft.fork_list()
+        forks = {f["package"]: f for f in result["forks"]}
+        self.assertEqual(forks["my-lib"]["ref"], "abc123")
+        self.assertEqual(forks["other"]["ref"], "v1.0.0")
+        self.assertEqual(forks["tool"]["ref"], "")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -525,6 +526,227 @@ class DepManager:
         self._save_config()
         return {"ok": True, "package": package, "dropped": patch_name or "all"}
 
+    # ── Override Management ─────────────────────────────────────────────────
+
+    def _read_package_json(self) -> Optional[dict]:
+        """Read package.json from cwd. Returns None if not found."""
+        pj_path = os.path.join(self.cwd, "package.json")
+        if not os.path.isfile(pj_path):
+            return None
+        try:
+            with open(pj_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def _write_package_json(self, data: dict) -> None:
+        """Atomically write package.json preserving 2-space indent."""
+        pj_path = os.path.join(self.cwd, "package.json")
+        fd, tmp = tempfile.mkstemp(suffix=".tmp", dir=self.cwd)
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f, indent=2)
+                f.write("\n")
+            os.replace(tmp, pj_path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            raise
+
+    def _load_overrides_tracking(self) -> dict:
+        """Load .bingo-deps/overrides.json tracking data."""
+        path = os.path.join(self.cwd, DEP_DIR, "overrides.json")
+        if not os.path.isfile(path):
+            return {"overrides": {}}
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {"overrides": {}}
+
+    def _save_overrides_tracking(self, data: dict) -> None:
+        """Write .bingo-deps/overrides.json."""
+        os.makedirs(os.path.join(self.cwd, DEP_DIR), exist_ok=True)
+        path = os.path.join(self.cwd, DEP_DIR, "overrides.json")
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+
+    def override_list(self) -> dict:
+        """List npm/yarn overrides with tracked reasons.
+
+        Returns {"ok": True, "overrides": [...], "count": N}
+        """
+        pj = self._read_package_json()
+        if pj is None:
+            return {"ok": True, "overrides": [], "count": 0, "note": "No package.json"}
+
+        # npm uses "overrides", yarn uses "resolutions"
+        overrides = pj.get("overrides", {})
+        resolutions = pj.get("resolutions", {})
+        all_ovs = {}
+        for pkg, ver in overrides.items():
+            all_ovs[pkg] = {"version": ver if isinstance(ver, str) else json.dumps(ver), "source": "overrides"}
+        for pkg, ver in resolutions.items():
+            if pkg not in all_ovs:
+                all_ovs[pkg] = {"version": ver, "source": "resolutions"}
+
+        # Merge with tracking data
+        tracking = self._load_overrides_tracking()
+        result = []
+        for pkg, info in all_ovs.items():
+            tracked = tracking.get("overrides", {}).get(pkg, {})
+            result.append({
+                "package": pkg,
+                "version": info["version"],
+                "source": info["source"],
+                "reason": tracked.get("reason", ""),
+                "created": tracked.get("created", ""),
+                "tracked": bool(tracked),
+            })
+
+        return {"ok": True, "overrides": result, "count": len(result)}
+
+    def override_check(self) -> dict:
+        """Check if npm overrides are still needed.
+
+        Reads package-lock.json to determine what version the tree resolves to.
+        Returns {"ok": True, "overrides": [{"package", "status", "reason"}]}
+        """
+        pj = self._read_package_json()
+        if pj is None:
+            return {"ok": True, "overrides": [], "count": 0}
+
+        overrides = pj.get("overrides", {})
+        resolutions = pj.get("resolutions", {})
+        all_ovs = dict(overrides)
+        all_ovs.update(resolutions)
+
+        if not all_ovs:
+            return {"ok": True, "overrides": [], "count": 0}
+
+        # Try reading package-lock.json for resolved versions
+        lock_path = os.path.join(self.cwd, "package-lock.json")
+        lock_data: Optional[dict] = None
+        if os.path.isfile(lock_path):
+            try:
+                with open(lock_path) as f:
+                    lock_data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        results = []
+        for pkg, override_ver in all_ovs.items():
+            if not isinstance(override_ver, str):
+                results.append({
+                    "package": pkg,
+                    "override_version": json.dumps(override_ver),
+                    "status": "complex",
+                    "reason": "Nested override — manual check required",
+                })
+                continue
+
+            # Look up in lock file
+            resolved_ver = None
+            if lock_data:
+                # npm v2/v3 lock format: packages["node_modules/<pkg>"].version
+                packages = lock_data.get("packages", {})
+                lock_key = f"node_modules/{pkg}"
+                if lock_key in packages:
+                    resolved_ver = packages[lock_key].get("version", "")
+
+            if resolved_ver is None:
+                results.append({
+                    "package": pkg,
+                    "override_version": override_ver,
+                    "status": "unknown",
+                    "reason": "Cannot determine resolved version",
+                })
+            elif resolved_ver == override_ver:
+                # Lock resolved to override version — could be redundant
+                # Check if the package's parent requires a different version
+                # by looking at the dependency entry in lock file
+                pkg_entry = packages.get(lock_key, {})
+                # If the package has no "overridden" marker and its version
+                # matches, the tree might naturally resolve to it
+                results.append({
+                    "package": pkg,
+                    "override_version": override_ver,
+                    "resolved_version": resolved_ver,
+                    "status": "redundant",
+                    "reason": "Lock resolves to override version — may no longer be needed",
+                })
+            else:
+                results.append({
+                    "package": pkg,
+                    "override_version": override_ver,
+                    "resolved_version": resolved_ver,
+                    "status": "active",
+                    "reason": f"Override forcing {override_ver} (tree wants {resolved_ver})",
+                })
+
+        redundant = sum(1 for r in results if r["status"] == "redundant")
+        return {"ok": True, "overrides": results, "count": len(results), "redundant": redundant}
+
+    def override_add(self, package: str, version: str, reason: str = "") -> dict:
+        """Add an npm override with reason tracking.
+
+        Returns {"ok": True, "package": ..., "version": ...}
+        """
+        pj = self._read_package_json()
+        if pj is None:
+            return {"ok": False, "error": "No package.json found"}
+
+        # Detect yarn vs npm
+        yarn_lock = os.path.isfile(os.path.join(self.cwd, "yarn.lock"))
+        field = "resolutions" if yarn_lock else "overrides"
+
+        if field not in pj:
+            pj[field] = {}
+        pj[field][package] = version
+        self._write_package_json(pj)
+
+        # Track reason
+        tracking = self._load_overrides_tracking()
+        tracking.setdefault("overrides", {})[package] = {
+            "version": version,
+            "reason": reason,
+            "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "manager_field": field,
+        }
+        self._save_overrides_tracking(tracking)
+
+        return {"ok": True, "package": package, "version": version, "field": field}
+
+    def override_drop(self, package: str) -> dict:
+        """Remove an npm override.
+
+        Returns {"ok": True, "package": ..., "dropped": True}
+        """
+        pj = self._read_package_json()
+        if pj is None:
+            return {"ok": False, "error": "No package.json found"}
+
+        dropped = False
+        for field in ("overrides", "resolutions"):
+            if field in pj and package in pj[field]:
+                del pj[field][package]
+                if not pj[field]:
+                    del pj[field]
+                dropped = True
+        if dropped:
+            self._write_package_json(pj)
+
+        # Remove tracking
+        tracking = self._load_overrides_tracking()
+        if package in tracking.get("overrides", {}):
+            del tracking["overrides"][package]
+            self._save_overrides_tracking(tracking)
+
+        return {"ok": True, "package": package, "dropped": dropped}
+
 
 # ─── Diff Utilities ──────────────────────────────────────────────────────────
 
@@ -610,36 +832,175 @@ def _apply_patch(patch_path: str, target_dir: str) -> Tuple[bool, str]:
 
 
 def _apply_patch_python(patch_path: str, target_dir: str) -> Tuple[bool, str]:
-    """Pure-Python patch application (basic unified diff support)."""
+    """Pure-Python unified diff patch application.
+
+    Parses unified diff format and applies hunks to target files.
+    Supports: context matching, fuzzy offset (±3 lines), new/deleted files.
+    Processes hunks in reverse order to avoid line number cascading.
+    """
+    import re
+
     try:
         with open(patch_path) as f:
-            patch_text = f.read()
+            patch_lines = f.readlines()
     except OSError as e:
         return (False, str(e))
 
-    # Parse hunks
-    current_file = None
-    hunks: Dict[str, List[str]] = {}
+    # Parse into file-level diffs
+    file_diffs: List[dict] = []
+    i = 0
+    while i < len(patch_lines):
+        line = patch_lines[i]
 
-    for line in patch_text.splitlines(keepends=True):
-        if line.startswith("+++ b/"):
-            # Extract relative path after the package name prefix
-            parts = line[6:].strip().split("/", 1)
-            current_file = parts[1] if len(parts) > 1 else parts[0]
-            hunks.setdefault(current_file, [])
-        elif current_file and (line.startswith("+") or line.startswith("-")
-                               or line.startswith(" ") or line.startswith("@@")):
-            hunks[current_file].append(line)
+        # Find --- a/... and +++ b/... pair
+        if line.startswith("--- "):
+            if i + 1 < len(patch_lines) and patch_lines[i + 1].startswith("+++ "):
+                old_path = line[4:].strip()
+                new_line = patch_lines[i + 1]
+                # Strip p2: +++ b/<pkg>/<file> -> <file>
+                new_path_raw = new_line[6:].strip()
+                parts = new_path_raw.split("/", 1)
+                rel_path = parts[1] if len(parts) > 1 else parts[0]
 
-    if not hunks:
-        return (False, "No hunks found in patch")
+                is_new = old_path == "/dev/null" or old_path.endswith("/dev/null")
+                is_delete = new_line.strip().endswith("/dev/null")
 
-    # For now, just verify the files exist — full Python patching is complex
-    missing = [f for f in hunks if not os.path.isfile(os.path.join(target_dir, f))]
-    if missing:
-        return (False, f"Files not found: {', '.join(missing[:3])}")
+                # Collect hunks for this file
+                hunks: List[dict] = []
+                i += 2
+                while i < len(patch_lines):
+                    hunk_line = patch_lines[i]
+                    m = re.match(
+                        r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@',
+                        hunk_line,
+                    )
+                    if m:
+                        old_start = int(m.group(1))
+                        old_count = int(m.group(2)) if m.group(2) is not None else 1
+                        new_start = int(m.group(3))
+                        new_count = int(m.group(4)) if m.group(4) is not None else 1
+                        hunk_body: List[str] = []
+                        i += 1
+                        while i < len(patch_lines):
+                            hl = patch_lines[i]
+                            if hl.startswith((" ", "+", "-")):
+                                hunk_body.append(hl)
+                                i += 1
+                            elif hl.startswith("\\ No newline"):
+                                i += 1  # skip no-newline marker
+                            else:
+                                break
+                        hunks.append({
+                            "old_start": old_start,
+                            "old_count": old_count,
+                            "new_start": new_start,
+                            "new_count": new_count,
+                            "lines": hunk_body,
+                        })
+                    elif hunk_line.startswith("--- ") or hunk_line.startswith("diff "):
+                        break  # next file diff
+                    else:
+                        i += 1
 
-    return (False, "Python-only patch application not fully implemented; install 'patch' command")
+                file_diffs.append({
+                    "path": rel_path,
+                    "is_new": is_new,
+                    "is_delete": is_delete,
+                    "hunks": hunks,
+                })
+                continue
+        i += 1
+
+    if not file_diffs:
+        return (False, "No file diffs found in patch")
+
+    # Apply each file diff
+    for fd in file_diffs:
+        target_file = os.path.join(target_dir, fd["path"])
+
+        if fd["is_delete"]:
+            try:
+                os.remove(target_file)
+            except FileNotFoundError:
+                pass
+            continue
+
+        if fd["is_new"]:
+            os.makedirs(os.path.dirname(target_file) or ".", exist_ok=True)
+            new_lines: List[str] = []
+            for hunk in fd["hunks"]:
+                for hl in hunk["lines"]:
+                    if hl.startswith("+"):
+                        new_lines.append(hl[1:])
+                    elif hl.startswith(" "):
+                        new_lines.append(hl[1:])
+            with open(target_file, "w") as f:
+                f.writelines(new_lines)
+            continue
+
+        # Existing file — read, apply hunks in reverse, write
+        if not os.path.isfile(target_file):
+            return (False, f"File not found: {fd['path']}")
+
+        with open(target_file) as f:
+            file_lines = f.readlines()
+
+        # Process hunks in reverse order to preserve line numbers
+        for hunk in reversed(fd["hunks"]):
+            old_start = hunk["old_start"] - 1  # 0-indexed
+            hunk_lines = hunk["lines"]
+
+            # Build expected old lines and new lines
+            old_expected: List[str] = []
+            new_replacement: List[str] = []
+            for hl in hunk_lines:
+                if hl.startswith(" "):
+                    old_expected.append(hl[1:])
+                    new_replacement.append(hl[1:])
+                elif hl.startswith("-"):
+                    old_expected.append(hl[1:])
+                elif hl.startswith("+"):
+                    new_replacement.append(hl[1:])
+
+            # Try exact match first, then fuzzy offset ±3
+            match_pos = -1
+            for offset in range(0, 4):
+                for sign in (0, -1, 1) if offset == 0 else (-1, 1):
+                    pos = old_start + offset * sign
+                    if pos < 0 or pos + len(old_expected) > len(file_lines):
+                        continue
+                    chunk = file_lines[pos:pos + len(old_expected)]
+                    if _lines_match(chunk, old_expected):
+                        match_pos = pos
+                        break
+                if match_pos >= 0:
+                    break
+
+            if match_pos < 0:
+                context = old_expected[0].rstrip() if old_expected else "(empty)"
+                return (
+                    False,
+                    f"Hunk failed for {fd['path']} at line {hunk['old_start']}: "
+                    f"context mismatch near '{context}'",
+                )
+
+            # Apply: replace old lines with new lines
+            file_lines[match_pos:match_pos + len(old_expected)] = new_replacement
+
+        with open(target_file, "w") as f:
+            f.writelines(file_lines)
+
+    return (True, "")
+
+
+def _lines_match(actual: List[str], expected: List[str]) -> bool:
+    """Compare lines ignoring trailing whitespace differences."""
+    if len(actual) != len(expected):
+        return False
+    for a, e in zip(actual, expected):
+        if a.rstrip("\n\r") != e.rstrip("\n\r"):
+            return False
+    return True
 
 
 def _is_binary(path: str) -> bool:

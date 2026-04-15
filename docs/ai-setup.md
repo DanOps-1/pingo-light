@@ -146,6 +146,12 @@ bingo-light patch drop <name|index> --json --yes
 bingo-light patch edit <name|index> --json --yes    # stage changes with git add first
 bingo-light patch reorder --order "3,1,2" --json --yes
 bingo-light patch squash <idx1> <idx2> --json --yes
+bingo-light patch lock <name> --json --yes            # lock patch for exclusive editing
+bingo-light patch unlock <name> --json --yes           # unlock patch
+bingo-light patch check [name] --json --yes            # check if patches are still needed
+bingo-light patch upstream <name> --json --yes         # export as PR-ready diff
+bingo-light patch expire --json --yes                  # list expired patches
+bingo-light patch stats --json --yes                   # patch health metrics
 ```
 
 ### Dependency patching (npm/pip)
@@ -159,12 +165,31 @@ bingo-light dep list --json --yes                      # list all dependency pat
 bingo-light dep drop <package> --json --yes            # remove patches
 ```
 
+### npm overrides management
+
+```bash
+bingo-light dep override list --json --yes             # list overrides with tracked reasons
+bingo-light dep override check --json --yes            # check if overrides are still needed
+bingo-light dep override add <pkg> <ver> --reason "why" --json --yes  # add override
+bingo-light dep override drop <pkg> --json --yes       # remove override
+```
+
+### Fork-as-dependency tracking
+
+```bash
+bingo-light dep fork list --json --yes                 # list git-based dependencies
+bingo-light dep fork check --json --yes                # check fork drift vs upstream
+bingo-light dep fork sync <pkg> --json --yes           # update fork ref to latest commit
+```
+
 ### Diagnostics
 
 ```bash
 bingo-light doctor --json --yes          # full health check
+bingo-light doctor --report --json --yes # extended checks (locks, expiry, deps)
 bingo-light diff --json --yes            # all changes vs upstream
 bingo-light history --json --yes         # sync history with hash mappings
+bingo-light report --json --yes          # comprehensive fork health report
 ```
 
 ## Key facts
