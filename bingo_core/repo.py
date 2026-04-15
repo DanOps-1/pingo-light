@@ -259,9 +259,9 @@ class Repo:
             # Try to regenerate via package manager
             basename = os.path.basename(lf)
             mgr_cmd = self._LOCK_MANAGERS.get(basename)
+            lock_dir = os.path.dirname(os.path.join(self.path, lf)) or self.path
             if (mgr_cmd and shutil.which(mgr_cmd[0])
                     and os.path.isfile(os.path.join(lock_dir, "package.json"))):
-                lock_dir = os.path.dirname(os.path.join(self.path, lf)) or self.path
                 try:
                     subprocess.run(
                         mgr_cmd, cwd=lock_dir,
@@ -2300,12 +2300,7 @@ class Repo:
                     results.append({"name": p.name, "status": "active", "reason": "No files changed"})
                     continue
 
-                # Get the patch diff
-                patch_diff = self.git.run(
-                    "diff", f"{p.hash}^", p.hash, check=False
-                )
-
-                # Try applying the patch to upstream in a detached state
+                # Check if upstream already contains equivalent changes
                 # If it applies but produces no diff, the changes are already upstream
                 try:
                     # Check if the patch's changes already exist at upstream
@@ -2326,14 +2321,6 @@ class Repo:
                             )
                         except GitError:
                             content_at_upstream = ""
-
-                        # Get file content at pre-patch (parent)
-                        try:
-                            content_pre_patch = self.git.run(
-                                "show", f"{p.hash}^:{pf}", check=False
-                            )
-                        except GitError:
-                            content_pre_patch = ""
 
                         # If upstream already has the same content as post-patch,
                         # this patch is obsolete for this file
@@ -2545,7 +2532,7 @@ class Repo:
         Returns {"ok": True, "report": "<markdown>", "summary": {...}}
         """
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        lines = [f"# Fork Health Report", f"Generated: {now}", ""]
+        lines = ["# Fork Health Report", f"Generated: {now}", ""]
 
         alerts = []
         patch_count = 0
@@ -2577,7 +2564,7 @@ class Repo:
             stat_patches = stats.get("patches", [])
             if stat_patches:
                 lines.append("## Patch Stack")
-                lines.append(f"| # | Name | Age | Size | Syncs | Status | Owner |")
+                lines.append("| # | Name | Age | Size | Syncs | Status | Owner |")
                 lines.append("|---|------|-----|------|-------|--------|-------|")
                 for i, p in enumerate(stat_patches, 1):
                     age = f"{p['age_days']}d" if p.get("age_days", -1) >= 0 else "?"

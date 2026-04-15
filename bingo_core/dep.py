@@ -668,9 +668,8 @@ class DepManager:
                 # Lock resolved to override version — could be redundant
                 # Check if the package's parent requires a different version
                 # by looking at the dependency entry in lock file
-                pkg_entry = packages.get(lock_key, {})
-                # If the package has no "overridden" marker and its version
-                # matches, the tree might naturally resolve to it
+                # If the lock resolves to the same version, the override
+                # may no longer be needed
                 results.append({
                     "package": pkg,
                     "override_version": override_ver,
@@ -730,11 +729,11 @@ class DepManager:
             return {"ok": False, "error": "No package.json found"}
 
         dropped = False
-        for field in ("overrides", "resolutions"):
-            if field in pj and package in pj[field]:
-                del pj[field][package]
-                if not pj[field]:
-                    del pj[field]
+        for pj_key in ("overrides", "resolutions"):
+            if pj_key in pj and package in pj[pj_key]:
+                del pj[pj_key][package]
+                if not pj[pj_key]:
+                    del pj[pj_key]
                 dropped = True
         if dropped:
             self._write_package_json(pj)

@@ -25,7 +25,7 @@ import json
 import os
 import tempfile
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from bingo_core import BINGO_DIR
 from bingo_core.exceptions import BingoError
