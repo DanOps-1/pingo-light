@@ -69,11 +69,15 @@ That's it. Three commands and your fork stays in sync forever.
 
 > The AI calls `conflict-analyze --json`, reads the structured ours/theirs data, writes the merged file, and the rebase continues. No human needed.
 
-During a rebase, `conflict-analyze` also returns:
-- **`patch_intent`** — patch name, subject, full commit message, original SHA, original diff, metadata (reason/tags/upstream_pr/status/owner), and position in the patch stack.
-- **`verify`** — configured `test.command` plus per-file syntax/parse commands by extension (`.py/.json/.yml/.yaml/.toml/.sh`).
+During a rebase, `conflict-analyze` returns a full situational briefing:
+- **`patch_intent`** — patch name, subject, full commit message, original SHA, original diff, metadata, stack position.
+- **`verify`** — configured `test.command` + per-file syntax/parse hints by extension (`.py/.json/.yml/.yaml/.toml/.sh`).
+- **`upstream_context`** — upstream commits touching conflicts, with author, subject, and extracted PR numbers.
+- **`patch_dependencies`** — later patches in your stack that modify overlapping files (cascade risk).
+- **`decision_memory`** — prior resolutions for this patch from `.bingo/decisions/`, ranked by relevance.
+- Each `conflicts[]` entry carries **`semantic_class`**: `whitespace` / `import_reorder` / `signature_change` / `logic`.
 
-`conflict-resolve --verify` (CLI) or `verify: true` (MCP) runs `test.command` after the final `git rebase --continue`; the result is attached as `verify_result`.
+`conflict-resolve --verify` (CLI) or `verify: true` (MCP) runs `test.command` after the final `git rebase --continue`; the result is attached as `verify_result`. `conflict-resolve` also auto-records the decision (file, semantic class, strategy) to decision memory.
 
 ---
 

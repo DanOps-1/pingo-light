@@ -133,8 +133,13 @@ Returns `ours` (upstream version), `theirs` (your patch), and `hint` (suggested 
 During a rebase, `conflict-analyze` also returns:
 - `patch_intent`: patch name, subject, full commit message, original SHA, original diff, metadata (reason, tags, upstream_pr, status, owner), and stack position.
 - `verify`: configured `test.command` + per-file verification hints (syntax/parse commands for `.py`, `.json`, `.yml`, `.yaml`, `.toml`, `.sh`).
+- `upstream_context`: upstream commits in `old-tracking..upstream/<branch>` that touched the conflicting files — each with sha, author, subject, and auto-extracted PR number.
+- `patch_dependencies`: later patches in the stack that modify overlapping files — flags cascade risk before you commit a resolution.
+- `decision_memory`: previous resolutions for this patch from `.bingo/decisions/<patch>.json`, ranked by relevance (same file / same semantic class). Complements rerere with pattern-level memory.
 
-`conflict-resolve --verify` (CLI) or `verify: true` (MCP tool `bingo_conflict_resolve`) runs `test.command` after the final `git rebase --continue`; the result is attached as `verify_result`.
+Each entry in `conflicts` now also carries `semantic_class`: one of `whitespace`, `import_reorder`, `signature_change`, `logic` — useful for routing trivial conflicts without full AI reasoning.
+
+`conflict-resolve --verify` (CLI) or `verify: true` (MCP tool `bingo_conflict_resolve`) runs `test.command` after the final `git rebase --continue`; the result is attached as `verify_result`. `conflict-resolve` also records the decision (file, semantic class, strategy) to `decision_memory` automatically.
 
 After resolving manually (without the helper):
 

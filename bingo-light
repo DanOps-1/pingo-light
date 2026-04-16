@@ -269,6 +269,58 @@ def _format_conflict_analyze(result: dict) -> str:
         for h in verify.get("file_hints", []):
             lines.append(f"  [{h['kind']}] {h['command']}")
 
+    deps = result.get("patch_dependencies")
+    if deps and deps.get("dependents"):
+        lines.append("")
+        dlist = deps["dependents"]
+        lines.append(
+            f"{_c(BOLD, 'Cascade risk:')} "
+            f"{len(dlist)} later patch(es) touch overlapping files"
+        )
+        for d in dlist[:5]:
+            files = ", ".join(d.get("overlapping_files", []))
+            lines.append(
+                f"  #{d['position']} {d['name']}: {d.get('subject', '')} "
+                f"\u2014 {_c(YELLOW, files)}"
+            )
+        if len(dlist) > 5:
+            lines.append(f"  {_c(DIM, f'... {len(dlist) - 5} more')}")
+
+    dm = result.get("decision_memory")
+    if dm and dm.get("entries"):
+        lines.append("")
+        lines.append(f"{_c(BOLD, 'Decision memory:')} prior resolutions for this patch")
+        for e in dm["entries"]:
+            lines.append(f"  {_c(CYAN, e['file'])} ({e['semantic_class']}):")
+            for prev in e.get("previous_decisions", [])[:3]:
+                strat = prev.get("resolution_strategy", "?")
+                subj = prev.get("upstream_subject") or "(no subject)"
+                ts = prev.get("timestamp", "")
+                rel = prev.get("relevance", "")
+                lines.append(
+                    f"    [{strat}] {subj} {_c(DIM, f'({rel}, {ts})')}"
+                )
+
+    uc = result.get("upstream_context")
+    if uc:
+        lines.append("")
+        total = uc.get("total_commits", 0)
+        touching = uc.get("commits_touching_conflicts", [])
+        lines.append(
+            f"{_c(BOLD, 'Upstream context:')} "
+            f"{uc.get('range', '?')} "
+            f"({total} commits, {len(touching)} touching conflicts)"
+        )
+        for commit in touching[:5]:
+            short = commit.get("short_sha", "?")
+            subj = commit.get("subject", "")
+            author = commit.get("author", "")
+            pr = commit.get("pr")
+            pr_tag = f" #{pr}" if pr else ""
+            lines.append(f"  {_c(DIM, short)} {subj}{pr_tag} \u2014 {author}")
+        if len(touching) > 5:
+            lines.append(f"  {_c(DIM, f'... {len(touching) - 5} more')}")
+
     return "\n".join(lines)
 
 

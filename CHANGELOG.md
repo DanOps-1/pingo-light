@@ -3,6 +3,43 @@
 All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.2.0] - 2026-04-16
+
+### Added
+
+Four new top-level fields on `conflict-analyze` output during a
+rebase. Together they turn `conflict-analyze` from a raw-text dump
+into a full situational briefing for the AI resolving the conflict.
+
+- **`upstream_context`** (B2): upstream commits in the range
+  `old-tracking..upstream/<branch>` that modified conflicting files.
+  Each entry has sha, short_sha, author, timestamp, subject, files,
+  and an extracted PR number (from `#NNN` patterns). Helps AI tell
+  "upstream refactor" from "upstream bugfix."
+- **`patch_dependencies`** (B4): for the current patch, later patches
+  in the stack that touch overlapping files. Surfaces cascade risk
+  before the AI commits to a resolution that will break downstream
+  patches.
+- **`semantic_class`** (B3, on each conflict): classification of each
+  conflict region as `whitespace` / `import_reorder` /
+  `signature_change` / `logic`. Lets AI skip reasoning for trivial
+  conflicts. New module `bingo_core/semantic.py`, extensible by
+  adding rules per language.
+- **`decision_memory`** (B6): per-patch JSON log of previous
+  resolutions stored at `.bingo/decisions/<patch>.json`, keyed by
+  (patch_name, file, semantic_class). Complements git rerere (which
+  keys by literal text) with pattern-level memory that survives small
+  upstream drift. Records `keep_ours` / `keep_theirs` / `manual`.
+  Auto-recorded by `conflict-resolve`, surfaced by `conflict-analyze`
+  with relevance tags.
+
+### Changed
+
+- `ConflictInfo` dataclass gains `semantic_class` field (default
+  `"logic"` for backward compatibility).
+- `bingo_conflict_analyze` MCP description enumerates the four new
+  fields.
+
 ## [2.1.3] - 2026-04-16
 
 ### Added

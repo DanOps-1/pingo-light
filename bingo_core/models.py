@@ -32,6 +32,7 @@ class ConflictInfo:
     theirs: str = ""
     conflict_count: int = 0
     merge_hint: str = ""
+    semantic_class: str = "logic"
 
     def to_dict(self) -> dict:
         return asdict(self)

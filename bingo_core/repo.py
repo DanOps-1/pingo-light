@@ -31,6 +31,8 @@ from bingo_core.exceptions import (
     DirtyTreeError,
 )
 from bingo_core.models import ConflictInfo
+from bingo_core.semantic import classify_conflict
+from bingo_core.decisions import DecisionMemory, detect_resolution_strategy
 from bingo_core.git import Git
 from bingo_core.config import Config
 from bingo_core.state import State
@@ -46,6 +48,7 @@ class Repo:
         self.config = Config(self.path)
         self.state = State(self.path)
         self.team = TeamState(self.path, git=self.git)
+        self.decisions = DecisionMemory(self.path)
 
     # -- Internal helpers --
 
@@ -359,6 +362,167 @@ class Repo:
         ".sh": ("bash -n {path}", "syntax"),
     }
 
+    _PR_NUMBER_RE = re.compile(r"(?:#|pull request #)(\d+)")
+
+    def _build_patch_dependencies(self, current_name: str) -> Optional[dict]:
+        """Find later patches in the stack that touch the same files as current.
+
+        Useful for detecting cascade risk: if we're resolving a conflict in
+        patch A, and patches B/C/D build on A's changes to the same files,
+        the AI should consider whether its merge choice will cascade.
+
+        Returns {current_patch, dependents: [{name, subject, position,
+        overlapping_files}]} or None if no stack info available.
+        """
+        if not current_name:
+            return None
+        try:
+            c = self._load()
+            base = self._patches_base(c)
+            if not base:
+                return None
+            try:
+                log_output = self.git.run(
+                    "rev-list", "--reverse",
+                    f"{base}..{c['patches_branch']}"
+                )
+            except GitError:
+                return None
+            shas = log_output.splitlines()
+            if not shas:
+                return None
+
+            # Collect (index, name, subject, sha, files) for each patch.
+            patches_info = []
+            for idx, sha in enumerate(shas, start=1):
+                try:
+                    subj = self.git.run("log", "-1", "--format=%s", sha).strip()
+                except GitError:
+                    continue
+                m = self._PATCH_SUBJECT_RE.match(subj)
+                if not m:
+                    continue
+                try:
+                    files_out = self.git.run(
+                        "show", "--format=", "--name-only", sha
+                    )
+                except GitError:
+                    files_out = ""
+                files = [ln for ln in files_out.splitlines() if ln]
+                patches_info.append({
+                    "index": idx,
+                    "name": m.group(1),
+                    "subject": m.group(2).strip(),
+                    "files": set(files),
+                })
+
+            # Find current patch and its files.
+            cur = next(
+                (p for p in patches_info if p["name"] == current_name), None
+            )
+            if cur is None:
+                return None
+
+            # Later patches that overlap.
+            dependents = []
+            for p in patches_info:
+                if p["index"] <= cur["index"]:
+                    continue
+                overlap = cur["files"] & p["files"]
+                if overlap:
+                    dependents.append({
+                        "name": p["name"],
+                        "subject": p["subject"],
+                        "position": p["index"],
+                        "overlapping_files": sorted(overlap),
+                    })
+            return {
+                "current_patch": current_name,
+                "dependents": dependents,
+            }
+        except Exception:
+            return None
+
+    def _build_upstream_context(self, conflicted_files: List[str]) -> Optional[dict]:
+        """Find upstream commits that modified the conflicting files.
+
+        Uses .bingo/.undo-tracking (pre-sync upstream position) as the
+        baseline and the current tracking branch as the target. For each
+        conflicted file, lists upstream commits between those two points.
+
+        Returns a dict {range, total_commits, commits_touching_conflicts}
+        or None if the comparison range cannot be established.
+        """
+        try:
+            _head, old_tracking = self.state.load_undo()
+        except Exception:
+            return None
+        if not old_tracking:
+            return None
+
+        try:
+            c = self._load()
+        except Exception:
+            return None
+        # During a conflict, _sync_locked rolls back the tracking branch,
+        # so we use the remote-tracking ref (upstream/<branch>) which
+        # reflects the fetched target position.
+        new_tracking = (
+            self.git.rev_parse(f"upstream/{c['upstream_branch']}")
+            or self.git.rev_parse(c["tracking_branch"])
+        )
+        if not new_tracking or new_tracking == old_tracking:
+            return None
+
+        commit_map: dict = {}
+        FMT = "%H%x1f%h%x1f%an%x1f%at%x1f%s"
+        for f in conflicted_files:
+            try:
+                out = self.git.run(
+                    "log",
+                    f"--format={FMT}",
+                    f"{old_tracking}..{new_tracking}",
+                    "--",
+                    f,
+                )
+            except GitError:
+                continue
+            for line in out.splitlines():
+                parts = line.split("\x1f")
+                if len(parts) != 5:
+                    continue
+                sha, short, author, ts, subject = parts
+                entry = commit_map.setdefault(sha, {
+                    "sha": sha,
+                    "short_sha": short,
+                    "author": author,
+                    "timestamp": int(ts) if ts.isdigit() else 0,
+                    "subject": subject,
+                    "files": [],
+                    "pr": None,
+                })
+                if f not in entry["files"]:
+                    entry["files"].append(f)
+                if entry["pr"] is None:
+                    m = self._PR_NUMBER_RE.search(subject)
+                    if m:
+                        entry["pr"] = m.group(1)
+
+        total = 0
+        try:
+            total = self.git.rev_list_count(f"{old_tracking}..{new_tracking}")
+        except Exception:
+            pass
+
+        commits = sorted(
+            commit_map.values(), key=lambda x: x["timestamp"], reverse=True
+        )
+        return {
+            "range": f"{old_tracking[:7]}..{new_tracking[:7]}",
+            "total_commits": total,
+            "commits_touching_conflicts": commits,
+        }
+
     def _verify_hints_for(self, files: List[str]) -> List[dict]:
         """Generate per-file verification commands by extension.
 
@@ -525,6 +689,7 @@ class Repo:
             theirs=theirs,
             conflict_count=conflict_count,
             merge_hint=merge_hint,
+            semantic_class=classify_conflict(ours, theirs, filepath),
         )
 
     def _record_sync(self, c: dict, behind: int, saved_tracking: str) -> None:
@@ -1138,8 +1303,12 @@ class Repo:
             "test_command": self.config.get("test.command") or None,
             "file_hints": self._verify_hints_for(conflicted),
         }
+        upstream_context = self._build_upstream_context(conflicted)
+        patch_dependencies = self._build_patch_dependencies(
+            patch_intent.get("name", "") if patch_intent else ""
+        )
 
-        return {
+        result = {
             "ok": True,
             "in_rebase": True,
             "current_patch": current_patch,
@@ -1155,6 +1324,34 @@ class Repo:
                 "6. To abort instead: git rebase --abort",
             ],
         }
+        if upstream_context is not None:
+            result["upstream_context"] = upstream_context
+        if patch_dependencies is not None:
+            result["patch_dependencies"] = patch_dependencies
+
+        # Decision memory: look up previous resolutions for this patch.
+        patch_name = patch_intent.get("name", "") if patch_intent else ""
+        if patch_name:
+            memory_entries = []
+            for conflict in conflicts:
+                prior = self.decisions.lookup(
+                    patch_name,
+                    file=conflict.file,
+                    semantic_class=conflict.semantic_class,
+                    limit=3,
+                )
+                if prior:
+                    memory_entries.append({
+                        "file": conflict.file,
+                        "semantic_class": conflict.semantic_class,
+                        "previous_decisions": prior,
+                    })
+            if memory_entries:
+                result["decision_memory"] = {
+                    "patch": patch_name,
+                    "entries": memory_entries,
+                }
+        return result
 
     def conflict_resolve(
         self, file_path: str, content: str = "", verify: bool = False
@@ -1197,6 +1394,9 @@ class Repo:
                 f"Unmerged files: {', '.join(unmerged) if unmerged else '(none)'}"
             )
 
+        # Capture pre-resolve conflict snapshot (for decision memory).
+        pre_conflict = self._extract_conflict(rel_path)
+
         # Write content if provided
         if content:
             full_path = str(resolved)
@@ -1209,6 +1409,41 @@ class Repo:
         # Stage the resolved file
         if not self.git.run_ok("add", rel_path):
             raise BingoError(f"Failed to stage file: {rel_path}")
+
+        # Record decision memory (best-effort; silent on failure).
+        try:
+            intent = self._build_patch_intent()
+            patch_name = intent.get("name", "") if intent else ""
+            if patch_name:
+                resolved_content = content
+                if not resolved_content:
+                    try:
+                        with open(str(resolved)) as f:
+                            resolved_content = f.read()
+                    except (IOError, OSError):
+                        resolved_content = ""
+                strategy = detect_resolution_strategy(
+                    resolved_content, pre_conflict.ours, pre_conflict.theirs
+                )
+                # Pick the first upstream commit touching this file as the
+                # "triggering" upstream change (best-effort context).
+                uc = self._build_upstream_context([rel_path])
+                upstream_sha = None
+                upstream_subject = None
+                if uc and uc.get("commits_touching_conflicts"):
+                    top = uc["commits_touching_conflicts"][0]
+                    upstream_sha = top.get("sha")
+                    upstream_subject = top.get("subject")
+                self.decisions.record(
+                    patch_name,
+                    file=rel_path,
+                    semantic_class=pre_conflict.semantic_class,
+                    resolution_strategy=strategy,
+                    upstream_sha=upstream_sha,
+                    upstream_subject=upstream_subject,
+                )
+        except Exception:
+            pass  # memory is best-effort; never block rebase on it
 
         # Check remaining unmerged files
         remaining = self.git.ls_files_unmerged()

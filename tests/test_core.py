@@ -824,8 +824,8 @@ class TestRepo(unittest.TestCase):
             shutil.rmtree(tmpconfig, ignore_errors=True)
 
     def test_version_constant(self):
-        """VERSION should be 2.1.3."""
-        self.assertEqual(VERSION, "2.1.3")
+        """VERSION should be 2.2.0."""
+        self.assertEqual(VERSION, "2.2.0")
 
 
 class TestDataClasses(unittest.TestCase):
@@ -1366,6 +1366,339 @@ class TestConflictResolveVerify(unittest.TestCase):
         )
         self.assertTrue(result["ok"])
         self.assertEqual(result["verify_result"]["test"], "fail")
+
+
+class TestUpstreamContext(unittest.TestCase):
+    """Integration: conflict_analyze exposes upstream_context when undo state exists."""
+
+    def setUp(self):
+        self.upstream, self.fork = _create_upstream_and_fork()
+        self.repo = Repo(self.fork)
+        self.repo.init(self.upstream, "main")
+
+    def tearDown(self):
+        shutil.rmtree(os.path.dirname(self.upstream), ignore_errors=True)
+
+    def _run_sync_with_conflict(self):
+        """Induce a sync-driven rebase conflict so .bingo/.undo-tracking is set."""
+        foo = os.path.join(self.fork, "foo.py")
+        with open(foo, "w") as f:
+            f.write("print('fork')\n")
+        _run("git add -A && git commit -m '[bl] custom: add foo.py'", self.fork)
+        _run("git branch -f bingo-patches HEAD", self.fork)
+
+        foo_up = os.path.join(self.upstream, "foo.py")
+        with open(foo_up, "w") as f:
+            f.write("print('upstream')\n")
+        _run("git add -A && git commit -m 'upstream refactor (#42)'", self.upstream)
+
+        # Use real sync so undo state is recorded
+        try:
+            self.repo.sync(force=True)
+        except Exception:
+            pass  # conflicts cause errors; we want the rebase-paused state
+
+    def test_upstream_context_absent_without_undo_state(self):
+        """When no rebase has been attempted, upstream_context is absent."""
+        result = self.repo.conflict_analyze()
+        self.assertFalse(result["in_rebase"])
+        self.assertNotIn("upstream_context", result)
+
+    def test_upstream_context_present_during_conflict(self):
+        self._run_sync_with_conflict()
+        result = self.repo.conflict_analyze()
+        if not result.get("in_rebase"):
+            self.skipTest("Sync completed without triggering rebase conflict")
+        self.assertIn("upstream_context", result)
+        uc = result["upstream_context"]
+        self.assertIn("range", uc)
+        self.assertIn("total_commits", uc)
+        self.assertGreaterEqual(uc["total_commits"], 1)
+        commits = uc["commits_touching_conflicts"]
+        self.assertTrue(any("refactor" in c["subject"] for c in commits))
+
+    def test_pr_number_extracted_from_subject(self):
+        self._run_sync_with_conflict()
+        result = self.repo.conflict_analyze()
+        if not result.get("in_rebase"):
+            self.skipTest("Sync completed without triggering rebase conflict")
+        commits = result["upstream_context"]["commits_touching_conflicts"]
+        found_pr = next((c for c in commits if c.get("pr") == "42"), None)
+        self.assertIsNotNone(found_pr, "Expected to find PR #42 in upstream context")
+
+
+class TestPatchDependencies(unittest.TestCase):
+    """_build_patch_dependencies finds later patches touching same files."""
+
+    def setUp(self):
+        self.upstream, self.fork = _create_upstream_and_fork()
+        self.repo = Repo(self.fork)
+        self.repo.init(self.upstream, "main")
+
+    def tearDown(self):
+        shutil.rmtree(os.path.dirname(self.upstream), ignore_errors=True)
+
+    def _make_patch(self, name, filename, content):
+        p = os.path.join(self.fork, filename)
+        with open(p, "w") as f:
+            f.write(content)
+        _run(
+            f"git add -A && git commit -m '[bl] {name}: edit {filename}'",
+            self.fork,
+        )
+        _run("git branch -f bingo-patches HEAD", self.fork)
+
+    def test_no_dependents_when_name_empty(self):
+        deps = self.repo._build_patch_dependencies("")
+        self.assertIsNone(deps)
+
+    def test_no_dependents_when_stack_empty(self):
+        deps = self.repo._build_patch_dependencies("nonexistent")
+        self.assertIsNone(deps)
+
+    def test_no_dependents_when_none_overlap(self):
+        self._make_patch("first", "a.py", "1\n")
+        self._make_patch("second", "b.py", "2\n")
+        deps = self.repo._build_patch_dependencies("first")
+        self.assertIsNotNone(deps)
+        self.assertEqual(deps["dependents"], [])
+
+    def test_detects_overlap(self):
+        self._make_patch("first", "shared.py", "1\n")
+        self._make_patch("second", "shared.py", "1\n2\n")
+        self._make_patch("third", "other.py", "3\n")
+        deps = self.repo._build_patch_dependencies("first")
+        self.assertIsNotNone(deps)
+        self.assertEqual(len(deps["dependents"]), 1)
+        dep = deps["dependents"][0]
+        self.assertEqual(dep["name"], "second")
+        self.assertEqual(dep["overlapping_files"], ["shared.py"])
+
+    def test_does_not_look_backwards(self):
+        self._make_patch("first", "shared.py", "1\n")
+        self._make_patch("second", "shared.py", "1\n2\n")
+        deps = self.repo._build_patch_dependencies("second")
+        self.assertIsNotNone(deps)
+        self.assertEqual(deps["dependents"], [])
+
+
+class TestSemanticClassify(unittest.TestCase):
+    """Unit tests for bingo_core.semantic.classify_conflict."""
+
+    def test_whitespace_only(self):
+        from bingo_core import classify_conflict
+        self.assertEqual(
+            classify_conflict("x=1\ny=2", "x = 1\ny = 2"),
+            "whitespace",
+        )
+        self.assertEqual(
+            classify_conflict("x=1\ny=2\n", "x=1\n\ny=2\n"),
+            "whitespace",
+        )
+
+    def test_whitespace_not_classified_when_content_differs(self):
+        from bingo_core import classify_conflict
+        self.assertEqual(
+            classify_conflict("x=1", "x=2"),
+            "logic",
+        )
+
+    def test_import_reorder(self):
+        from bingo_core import classify_conflict
+        ours = "import os\nimport sys\nimport json"
+        theirs = "import json\nimport os\nimport sys"
+        self.assertEqual(classify_conflict(ours, theirs), "import_reorder")
+
+    def test_import_added_is_not_reorder(self):
+        """Different set of imports → logic, not reorder."""
+        from bingo_core import classify_conflict
+        ours = "import os"
+        theirs = "import os\nimport json"
+        self.assertEqual(classify_conflict(ours, theirs), "logic")
+
+    def test_import_with_non_import_line_is_logic(self):
+        from bingo_core import classify_conflict
+        ours = "import os\nx = 1"
+        theirs = "import os\nx = 2"
+        self.assertEqual(classify_conflict(ours, theirs), "logic")
+
+    def test_signature_change_python(self):
+        from bingo_core import classify_conflict
+        ours = "def foo(a, b):"
+        theirs = "def foo(a, b, c=None):"
+        self.assertEqual(classify_conflict(ours, theirs), "signature_change")
+
+    def test_signature_same_name_same_params_is_whitespace(self):
+        from bingo_core import classify_conflict
+        ours = "def foo(a, b):"
+        theirs = "def foo(a,b):"
+        self.assertEqual(classify_conflict(ours, theirs), "whitespace")
+
+    def test_signature_different_name_is_logic(self):
+        """Rename is NOT signature_change — names differ."""
+        from bingo_core import classify_conflict
+        ours = "def foo(a):"
+        theirs = "def bar(a):"
+        self.assertEqual(classify_conflict(ours, theirs), "logic")
+
+    def test_empty_inputs_are_logic(self):
+        from bingo_core import classify_conflict
+        self.assertEqual(classify_conflict("", ""), "logic")
+        self.assertEqual(classify_conflict("something", ""), "logic")
+
+
+class TestDecisionMemory(unittest.TestCase):
+    """Unit tests for bingo_core.decisions.DecisionMemory."""
+
+    def setUp(self):
+        from bingo_core import DecisionMemory
+        self.tmpdir = tempfile.mkdtemp(prefix="bl-dm-")
+        os.makedirs(os.path.join(self.tmpdir, ".bingo"), exist_ok=True)
+        self.mem = DecisionMemory(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_lookup_empty_when_no_history(self):
+        self.assertEqual(self.mem.lookup("foo"), [])
+
+    def test_record_and_lookup(self):
+        self.mem.record(
+            "foo", file="a.py", semantic_class="whitespace",
+            resolution_strategy="keep_ours",
+            upstream_sha="abc123", upstream_subject="fmt",
+        )
+        entries = self.mem.lookup("foo")
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["file"], "a.py")
+        self.assertEqual(entries[0]["resolution_strategy"], "keep_ours")
+
+    def test_relevance_ranking(self):
+        self.mem.record("foo", "a.py", "logic", "manual")
+        self.mem.record("foo", "b.py", "whitespace", "keep_ours")
+        self.mem.record("foo", "a.py", "whitespace", "keep_ours")
+        # Lookup with both file+class match should rank the 3rd entry top.
+        entries = self.mem.lookup(
+            "foo", file="a.py", semantic_class="whitespace"
+        )
+        self.assertEqual(entries[0]["file"], "a.py")
+        self.assertEqual(entries[0]["semantic_class"], "whitespace")
+        self.assertIn("same_file", entries[0]["relevance"])
+        self.assertIn("same_class", entries[0]["relevance"])
+
+    def test_unsafe_patch_name_rejected(self):
+        self.mem.record("../escape", "x", "logic", "manual")
+        self.assertEqual(self.mem.lookup("../escape"), [])
+        escape_path = os.path.join(self.tmpdir, ".bingo", "decisions")
+        if os.path.isdir(escape_path):
+            self.assertEqual(os.listdir(escape_path), [])
+
+    def test_max_decisions_enforced(self):
+        from bingo_core.decisions import MAX_DECISIONS_PER_PATCH
+        for i in range(MAX_DECISIONS_PER_PATCH + 5):
+            self.mem.record("foo", f"f{i}.py", "logic", "manual")
+        entries = self.mem.lookup("foo", limit=100)
+        self.assertLessEqual(len(entries), MAX_DECISIONS_PER_PATCH)
+
+
+class TestDetectResolutionStrategy(unittest.TestCase):
+    """Unit tests for bingo_core.decisions.detect_resolution_strategy."""
+
+    def test_keep_ours(self):
+        from bingo_core import detect_resolution_strategy
+        self.assertEqual(
+            detect_resolution_strategy("upstream\n", "upstream\n", "fork\n"),
+            "keep_ours",
+        )
+
+    def test_keep_theirs(self):
+        from bingo_core import detect_resolution_strategy
+        self.assertEqual(
+            detect_resolution_strategy("fork\n", "upstream\n", "fork\n"),
+            "keep_theirs",
+        )
+
+    def test_manual(self):
+        from bingo_core import detect_resolution_strategy
+        self.assertEqual(
+            detect_resolution_strategy(
+                "merged\n", "upstream\n", "fork\n"
+            ),
+            "manual",
+        )
+
+    def test_empty_content_is_manual(self):
+        from bingo_core import detect_resolution_strategy
+        self.assertEqual(
+            detect_resolution_strategy("", "upstream", "fork"),
+            "manual",
+        )
+
+
+class TestConflictResolveRecordsDecision(unittest.TestCase):
+    """Integration: conflict_resolve records a decision on success."""
+
+    def setUp(self):
+        self.upstream, self.fork = _create_upstream_and_fork()
+        self.repo = Repo(self.fork)
+        self.repo.init(self.upstream, "main")
+
+    def tearDown(self):
+        shutil.rmtree(os.path.dirname(self.upstream), ignore_errors=True)
+
+    def _induce_conflict(self):
+        foo = os.path.join(self.fork, "foo.py")
+        with open(foo, "w") as f:
+            f.write("print('fork')\n")
+        _run("git add -A && git commit -m '[bl] custom: add foo.py'", self.fork)
+        _run("git branch -f bingo-patches HEAD", self.fork)
+
+        foo_up = os.path.join(self.upstream, "foo.py")
+        with open(foo_up, "w") as f:
+            f.write("print('upstream')\n")
+        _run("git add -A && git commit -m 'upstream refactor'", self.upstream)
+
+        _run("git fetch upstream", self.fork)
+        _run("git branch -f upstream-tracking upstream/main", self.fork)
+        _run("git checkout bingo-patches", self.fork)
+        subprocess.run(
+            ["git", "rebase", "upstream-tracking"],
+            cwd=self.fork, capture_output=True,
+        )
+
+    def test_decision_recorded_after_resolve(self):
+        self._induce_conflict()
+        self.repo.conflict_resolve("foo.py", "print('merged')\n")
+        entries = self.repo.decisions.lookup("custom", file="foo.py")
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["file"], "foo.py")
+        self.assertEqual(entries[0]["resolution_strategy"], "manual")
+
+    def test_subsequent_analyze_surfaces_memory(self):
+        self._induce_conflict()
+        self.repo.conflict_resolve("foo.py", "print('merged')\n")
+        # Abort to reset rebase, then re-induce the same conflict
+        subprocess.run(["git", "rebase", "--abort"], cwd=self.fork,
+                       capture_output=True)
+        # Re-create conflict
+        foo_up = os.path.join(self.upstream, "foo.py")
+        with open(foo_up, "w") as f:
+            f.write("print('upstream v2')\n")
+        _run("git add -A && git commit -m 'upstream round 2'", self.upstream)
+        _run("git fetch upstream", self.fork)
+        _run("git branch -f upstream-tracking upstream/main", self.fork)
+        _run("git checkout bingo-patches", self.fork)
+        subprocess.run(
+            ["git", "rebase", "upstream-tracking"],
+            cwd=self.fork, capture_output=True,
+        )
+        result = self.repo.conflict_analyze()
+        if not result.get("in_rebase"):
+            self.skipTest("Sync did not leave a conflict for second round")
+        self.assertIn("decision_memory", result)
+        dm = result["decision_memory"]
+        self.assertEqual(dm["patch"], "custom")
+        self.assertTrue(len(dm["entries"]) > 0)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ import re
 
 # --- Constants ---
 
-VERSION = "2.1.3"
+VERSION = "2.2.0"
 PATCH_PREFIX = "[bl]"
 CONFIG_FILE = ".bingolight"
 BINGO_DIR = ".bingo"
@@ -39,6 +39,8 @@ from bingo_core.exceptions import (  # noqa: E402
     DirtyTreeError,
 )
 from bingo_core.models import PatchInfo, ConflictInfo  # noqa: E402
+from bingo_core.semantic import classify_conflict  # noqa: E402
+from bingo_core.decisions import DecisionMemory, detect_resolution_strategy  # noqa: E402
 from bingo_core.git import Git  # noqa: E402
 from bingo_core.config import Config  # noqa: E402
 from bingo_core.state import State  # noqa: E402
@@ -70,7 +72,11 @@ __all__ = [
     # Data classes
     "PatchInfo",
     "ConflictInfo",
+    # Functions
+    "classify_conflict",
+    "detect_resolution_strategy",
     # Classes
+    "DecisionMemory",
     "Git",
     "Config",
     "State",

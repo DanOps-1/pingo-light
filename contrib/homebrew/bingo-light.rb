@@ -1,7 +1,7 @@
 class BingoLight < Formula
   desc "Fork maintenance for AI agents — patch stack on top of upstream, one command to sync"
   homepage "https://github.com/DanOps-1/bingo-light"
-  url "https://github.com/DanOps-1/bingo-light/archive/refs/tags/v2.1.3.tar.gz"
+  url "https://github.com/DanOps-1/bingo-light/archive/refs/tags/v2.2.0.tar.gz"
   # sha256 "UPDATE_AFTER_RELEASE"
   license "MIT"
 

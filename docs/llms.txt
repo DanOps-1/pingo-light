@@ -149,6 +149,11 @@ Analyze conflicts during a paused rebase. Shows structured information about eac
 During a rebase, the output additionally includes:
 - `patch_intent`: patch name, subject, full commit message, original SHA, original diff, metadata, and stack position.
 - `verify`: configured `test.command` plus per-file syntax/parse commands by extension.
+- `upstream_context`: upstream commits that touched the conflicting files, with author/subject/PR.
+- `patch_dependencies`: later patches in the stack touching overlapping files (cascade risk).
+- `decision_memory`: prior resolutions for this patch (pattern-level memory complementing rerere).
+
+Each `conflicts[]` entry now also has `semantic_class` ∈ {whitespace, import_reorder, signature_change, logic}.
 
 ### bingo-light conflict-resolve [--verify]
 

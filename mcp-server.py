@@ -288,10 +288,13 @@ TOOLS = [
         "name": "bingo_conflict_analyze",
         "description": (
             "Analyze current rebase conflicts. Returns structured info about each conflicted file "
-            "(ours/theirs, conflict count, hints) plus patch_intent (name, subject, full commit "
-            "message, original_sha, original_diff, meta, stack_position) and verify "
-            "(test_command + per-file syntax/parse commands). "
-            "Call this when bingo_sync reports a conflict to understand what needs fixing."
+            "(ours/theirs, conflict count, hints, semantic_class: whitespace/import_reorder/"
+            "signature_change/logic) plus: patch_intent (name, subject, full commit message, "
+            "original_sha, original_diff, meta, stack_position), verify (test_command + per-file "
+            "syntax/parse commands), upstream_context (upstream commits touching conflicts with "
+            "author/PR), patch_dependencies (later patches touching same files — cascade risk), "
+            "and decision_memory (prior resolutions for this patch from .bingo/decisions/). "
+            "Call this when bingo_sync reports a conflict."
         ),
         "inputSchema": {
             "type": "object",
@@ -1094,7 +1097,7 @@ def main():
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "bingo-light",
-                    "version": "2.1.3",
+                    "version": "2.2.0",
                 },
             }))
 

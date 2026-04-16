@@ -187,7 +187,16 @@ cd bingo-light && make install && bingo-light setup
 }
 ```
 
-`conflict-analyze` 在 rebase 中额外附带 `patch_intent`（补丁意图：原始 commit、diff、metadata、栈位置）与 `verify`（配置的 `test.command` + 按扩展名的逐文件校验命令）。`conflict-resolve --verify` 在最终 `git rebase --continue` 完成后自动跑 `test.command`，结果挂在 `verify_result` 字段。
+`conflict-analyze` 在 rebase 中返回完整态势简报：
+
+- **`patch_intent`**：补丁意图（原始 commit、diff、metadata、栈位置）
+- **`verify`**：配置的 `test.command` + 按扩展名的逐文件校验命令
+- **`upstream_context`**：触发冲突的上游 commits（作者、主题、自动抽取的 PR 号）
+- **`patch_dependencies`**：栈中后续补丁是否触及相同文件（cascade 风险）
+- **`decision_memory`**：该补丁的历史解决方案（`.bingo/decisions/`）
+- 每条 `conflicts[]` 都带 **`semantic_class`**：`whitespace` / `import_reorder` / `signature_change` / `logic`
+
+`conflict-resolve --verify` 在最终 `git rebase --continue` 完成后自动跑 `test.command`，结果挂在 `verify_result` 字段；`conflict-resolve` 还会自动把本次决策（file, semantic class, strategy）写入 decision memory。
 
 </details>
 
