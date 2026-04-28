@@ -42,6 +42,8 @@ run_suite "Core Tests"        "$SCRIPT_DIR/test.sh $BL"
 run_suite "JSON Fuzz Tests"   "$SCRIPT_DIR/test-json.sh $BL"
 run_suite "Edge Case Tests"   "$SCRIPT_DIR/test-edge.sh $BL"
 run_suite "MCP Protocol Tests" "python3 $SCRIPT_DIR/test-mcp.py"
+run_suite "MCP Fuzz Tests"    "python3 $SCRIPT_DIR/fuzz_mcp.py"
+run_suite "Dep Unit Tests"    "python3 $SCRIPT_DIR/test_dep.py"
 
 # ─── Command coverage report ────────────────────────────────────────────────
 
@@ -77,7 +79,7 @@ fi
 
 echo ""
 echo "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo "  ${GREEN}$TOTAL_PASS passed${RESET}  ${RED}$TOTAL_FAIL failed${RESET}  ${YELLOW}$TOTAL_SKIP skipped${RESET}  ${DIM}(4 suites)${RESET}"
+echo "  ${GREEN}$TOTAL_PASS passed${RESET}  ${RED}$TOTAL_FAIL failed${RESET}  ${YELLOW}$TOTAL_SKIP skipped${RESET}  ${DIM}(6 suites)${RESET}"
 echo "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 exit $SUITE_FAILS

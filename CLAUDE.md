@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-bingo-light is an AI-native fork maintenance tool. It manages customizations as a clean patch stack on top of upstream, with `--json` and `--yes` flags for AI agent consumption. Python CLI (`bingo-light` + `bingo_core/` package) + MCP server (Python 3, 49 tools).
+bingo-light is an AI-native fork maintenance tool. It manages customizations as a clean patch stack on top of upstream, with `--json` and `--yes` flags for AI agent consumption. Python CLI (`bingo-light` + `bingo_core/` package) + MCP server (Python 3, 50 tools).
 
 ## Commands
 
@@ -76,7 +76,7 @@ All of these are **enforced by CI** (`sync-check` job). Push will fail if any ar
 
 **Release**: Push a tag `git tag vX.Y.Z && git push --tags` → CI auto-publishes GitHub Release + PyPI + npm.
 
-**MCP tool count** (currently 49) — change ALL of these together:
+**MCP tool count** (currently 50) — change ALL of these together:
 - `mcp-server.py` TOOLS array — source of truth
 - `README.md` — badge + body text (4+ places)
 - `README.en.md` — badge + body text (4+ places)

@@ -453,6 +453,11 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}}, "required": ["cwd"]}
     },
     {
+        "name": "bingo_workspace_remove",
+        "description": "Remove a repository from the workspace by alias or path.",
+        "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string"}, "target": {"type": "string", "description": "Alias or path of the repo to remove"}}, "required": ["cwd", "target"]}
+    },
+    {
         "name": "bingo_smart_sync",
         "description": (
             "ONE-SHOT SYNC: Fetches upstream, rebases all patches, and auto-resolves conflicts "
@@ -889,6 +894,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         elif name == "bingo_workspace_list":
             return _result(repo.workspace_list())
 
+        elif name == "bingo_workspace_remove":
+            return _result(repo.workspace_remove(arguments["target"]))
+
         elif name == "bingo_workspace_sync":
             return _result(repo.workspace_sync())
 
@@ -971,6 +979,14 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     return _result(ft.fork_check())
                 elif name == "bingo_dep_fork_sync":
                     return _result(ft.fork_sync(arguments["package"]))
+                return {
+                    "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
+                    "isError": True,
+                }
+            return {
+                "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
+                "isError": True,
+            }
 
         else:
             return {

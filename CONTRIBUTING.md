@@ -32,7 +32,7 @@ Open an issue using the **Bug Report** template. Include:
 ```
 bingo-light          # Python CLI (entry point)
 bingo_core/          # Core library package (all business logic)
-mcp-server.py        # MCP server (zero-dep Python 3, 29 tools)
+mcp-server.py        # MCP server (zero-dep Python 3, 50 tools)
 contrib/agent.py     # Advisor agent
 contrib/tui.py       # Terminal dashboard
 install.sh           # Installer (POSIX sh, CI-friendly)

@@ -41,6 +41,9 @@ jobs:
       - name: Git edge case tests
         run: ./tests/test-edge.sh
 
+      - name: MCP fuzz tests
+        run: python3 ./tests/fuzz_mcp.py
+
   mcp:
     name: MCP Protocol Tests
     runs-on: ubuntu-latest
@@ -110,6 +113,21 @@ jobs:
           grep -q "$N tools\|$N 个工具\|$N tool" CLAUDE.md || { echo "::error::CLAUDE.md tool count mismatch"; FAIL=1; }
           grep -q "$N MCP tools" docs/getting-started.md || { echo "::error::docs/getting-started.md tool count mismatch"; FAIL=1; }
           grep -q "$N tools" install.sh || { echo "::error::install.sh tool count mismatch"; FAIL=1; }
+          grep -q "$N tools" CONTRIBUTING.md || { echo "::error::CONTRIBUTING.md tool count mismatch"; FAIL=1; }
+          # Denylist: catch stale tool counts that slipped past per-file checks
+          # (the per-file grep above only requires ONE matching mention).
+          # Find every "<num> tools|<num>_tools|<num> 个工具" mention across
+          # all sync-tracked docs, fail if any number != $N appears.
+          STALE=$(grep -rhoE "[0-9]{1,3}( tools|_tools| 个工具)" \
+              README.md README.en.md CLAUDE.md CONTRIBUTING.md \
+              docs/getting-started.md install.sh 2>/dev/null \
+              | sort -u \
+              | grep -vE "^${N}( tools|_tools| 个工具)$" || true)
+          if [ -n "$STALE" ]; then
+            echo "::error::Stale tool count(s) referenced (expected $N):"
+            echo "$STALE"
+            FAIL=1
+          fi
           [ "$FAIL" = "0" ] || exit 1
 
       - name: README.md (zh-CN) required sections
@@ -159,3 +177,6 @@ jobs:
 
       - name: Run unit tests
         run: python3 tests/test_core.py
+
+      - name: Run dep unit tests
+        run: python3 tests/test_dep.py

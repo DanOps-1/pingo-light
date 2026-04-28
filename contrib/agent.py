@@ -68,7 +68,7 @@ def run_git(args: list[str], cwd: str) -> str:
     return result.stdout.strip()
 
 
-def call_llm(system: str, prompt: str, model: str = "claude-sonnet-4-20250514") -> str:
+def call_llm(system: str, prompt: str, model: str = "claude-sonnet-4-6") -> str:
     """Call Claude API with retry. Used for ANALYSIS only, never for code execution."""
     import urllib.request, urllib.error
 
@@ -647,7 +647,7 @@ Environment:
     parser.add_argument("--report", action="store_true", help="Generate full analysis report")
     parser.add_argument("--watch", action="store_true", help="Periodic monitoring loop")
     parser.add_argument("--interval", default="6h", help="Watch interval (default: 6h)")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model for analysis")
+    parser.add_argument("--model", default="claude-sonnet-4-6", help="Claude model for analysis")
     parser.add_argument("--quiet", action="store_true", help="Suppress log output")
     parser.add_argument("--json", action="store_true", help="Output result as JSON")
 
