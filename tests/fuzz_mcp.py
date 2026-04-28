@@ -18,8 +18,9 @@ import threading
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-MCP_SERVER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp-server.py")
-BINGO_LIGHT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bingo-light")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MCP_SERVER = os.path.join(_REPO_ROOT, "mcp-server.py")
+BINGO_LIGHT = os.path.join(_REPO_ROOT, "bingo-light")
 TEST_REPO = "/tmp/mcp-fuzz"
 TIMEOUT = 5  # seconds per test
 
@@ -152,6 +153,7 @@ def setup_test_repo():
         ["git", "init"],
         ["git", "config", "user.email", "fuzz@test.local"],
         ["git", "config", "user.name", "Fuzzer"],
+        ["git", "config", "commit.gpgsign", "false"],
     ]
     for cmd in cmds:
         subprocess.run(cmd, cwd=TEST_REPO, capture_output=True, check=True)
@@ -208,6 +210,8 @@ class Results:
         concern = sum(1 for _, v, _ in self.tests if v == "CONCERN")
         total = len(self.tests)
         print(f"  Total: {total}  |  OK: {ok}  |  BUG: {bug}  |  CONCERN: {concern}")
+        # Also emit a run-all.sh-compatible line so the aggregator picks it up.
+        print(f"  {ok} passed  {bug} failed  {concern} skipped")
         print()
         if bug > 0:
             print("BUGS:")

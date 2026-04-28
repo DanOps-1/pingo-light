@@ -1,5 +1,5 @@
 #!/bin/sh
-# bingo-light installer — CLI + MCP server (49 tools) + AI skills
+# bingo-light installer — CLI + MCP server (50 tools) + AI skills
 # https://github.com/DanOps-1/bingo-light
 #
 # Usage:

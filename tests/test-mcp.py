@@ -384,6 +384,7 @@ def test_tool_smoke(fork_dir: str, upstream_dir: str):
     # bingo_workspace_status needs workspace init which is out of scope for this test
     stateful_tools = [
         ('bingo_workspace_status', {'cwd': fork_dir}),
+        ('bingo_workspace_remove', {'cwd': fork_dir, 'target': 'noop-alias'}),
     ]
 
     for tool_name, args in stateful_tools:
