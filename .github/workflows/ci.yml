@@ -14,7 +14,7 @@ jobs:
     name: Core Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure git identity
         run: |
@@ -28,7 +28,7 @@ jobs:
     name: JSON Fuzz + Edge Cases
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure git identity
         run: |
@@ -48,7 +48,7 @@ jobs:
     name: MCP Protocol Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure git identity
         run: |
@@ -62,7 +62,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Python syntax check
         run: |
@@ -85,7 +85,7 @@ jobs:
     name: Sync Points Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: VERSION consistency
         run: |
@@ -168,7 +168,7 @@ jobs:
     name: Python Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure git identity
         run: |
